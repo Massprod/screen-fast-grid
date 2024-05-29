@@ -3,8 +3,19 @@ from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
 from database.mongo_connection import get_mongo_db_client
 from database.grid.grid_constructor import GridConstructor
+from loguru import logger
+
 
 load_dotenv('.env')
+
+logger.add(
+    f'logs/logs.log',
+    rotation='50 MB',
+    retention='14 days',
+    compression='zip',
+    backtrace=True,
+    diagnose=True,
+)
 
 app = FastAPI()
 
