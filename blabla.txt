@@ -1,0 +1,109 @@
+# PMK_GRID_DB:
+# - GRID
+# { ObjectID(): some Id we set, or auto-generated,
+#   gridData: {
+#       preset: 'pmk' (our basic preset, but we can mark it otherwise
+#                      actually, I think we need to store these presets somewhere)
+#       createdAt: timestamp,
+#       lastChange: timestamp (when we actually moved something - wheel stacks, or wheel).
+#       rows: {
+#               row identifier we set on creation - strings('A', 'B', ... 'AA'): {
+#                   column identifier we set on creation - strings(1, 2, 3 .. n): {
+#                       wheelstack == link to another collection (WHEELSTACKS) ObjectID():
+#                       [array with all links to the wheels, which is links to the collection (WHEELS) ObjectID()] <- using array, so we could maintain bot -> down ordering and use it more easily.
+#                   }
+#               }
+#          }
+#       }
+#   }
+# - WHEELSTACKS
+# { ObjectID(): some Id we set, or auto-generated,
+#   wheelStackData: {
+#       rowPlacement: rowIdentifier,
+#       colPlacement: colIdentifier,
+#       createdAt: timestamp <- ! we're going to have some transport part from which we're getting wheelstack, so they're coming into our grid from somewhere else, and we create their data only at the moment of coming to our grid !,
+#       lastChange: timestamp <- when we did something with this wheelStack
+#       lastOrder: ObjectID() == id of the order we completed (we're always doing actions on wheelstack by creating some orders to specify what to do with it),
+#       maxSize: integer <- we preset every wheelStack on creation with maximum number of wheels it could have in it.
+#       blocked: bool <- whenever we move something FROM wheelstack or IN it we're going to block options to place any orders on both wheelstack (from who and to)
+#       wheels: [array with ObjectID() for every wheel stored in this wheelStack.]
+#   }
+# }
+# - WHEELS
+# { ObjectID(): some Id we set, or auto-generated,
+#   wheelData: {
+#       wheelId: string - wheelId which we will obtain from provided source and create wheels based on it,
+#       batchNumber: string - batch number corresponding with creation of this wheel,
+#       wheelDiameter: integer (or string which is better?) - diameter of the wheel,
+#       receiptDate: timestamp - when we got this wheel in our grid,
+#   }
+# }
+#
+
+# Somewhat last view:
+Active Collections Schema
+GRID Collection
+json
+Copy code
+{
+  "_id": "ObjectId",
+  "preset": "String",
+  "createdAt": "Timestamp",
+  "lastChange": "Timestamp",
+  "rows": {
+    "rowIdentifier": {
+      "columnIdentifier": {
+        "wheelstack": "ObjectId",
+        "wheels": ["ObjectId"]
+      }
+    }
+  }
+}
+
+WHEELSTACKS Collection
+json
+Copy code
+{
+  "_id": "ObjectId",
+  "rowPlacement": "String",
+  "colPlacement": "String",
+  "createdAt": "Timestamp",
+  "lastChange": "Timestamp",
+  "lastOrder": "ObjectId",
+  "maxSize": "Integer",
+  "blocked": "Boolean",
+  "wheels": ["ObjectId"],
+  "status": "String" // 'active', 'blocked', etc.
+}
+
+Historical Collections Schema
+HISTORICAL_WHEELSTACKS Collection
+json
+Copy code
+{
+  "_id": "ObjectId",
+  "rowPlacement": "String",
+  "colPlacement": "String",
+  "createdAt": "Timestamp",
+  "lastChange": "Timestamp",
+  "lastOrder": "ObjectId",
+  "maxSize": "Integer",
+  "blocked": "Boolean",
+  "wheels": ["ObjectId"],
+  "status": "String", // 'gone_post_processing', 'gone_lab_tests'
+  "removedAt": "Timestamp" // Timestamp when moved to history
+}
+HISTORICAL_WHEELS Collection
+json
+Copy code
+{
+  "_id": "ObjectId",
+  "wheelId": "String",
+  "batchNumber": "String",
+  "wheelDiameter": "Integer",
+  "receiptDate": "Timestamp",
+  "status": "String", // 'gone_post_processing', 'gone_lab_tests'
+  "removedAt": "Timestamp" // Timestamp when moved to history
+}
+
+

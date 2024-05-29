@@ -1,0 +1,66 @@
+{
+  "bsonType": "object",
+  "required": ["timestamp", "gridSnapshot"],
+  "properties": {
+    "_id": {
+      "bsonType": "objectId",
+      "description": "must be an objectId and is required"
+    },
+    "timestamp": {
+      "bsonType": "date",
+      "description": "must be a date and is required"
+    },
+    "gridSnapshot": {
+      "bsonType": "object",
+      "required": ["preset", "createdAt", "lastChange", "rows"],
+      "properties": {
+        "preset": {
+          "bsonType": "string",
+          "description": "must be a string and is required"
+        },
+        "createdAt": {
+          "bsonType": "date",
+          "description": "must be a date and is required"
+        },
+        "lastChange": {
+          "bsonType": "date",
+          "description": "must be a date and is required"
+        },
+        "rows": {
+          "bsonType": "object",
+          "additionalProperties": {
+            "bsonType": "object",
+            "required": ["columns"],
+            "properties": {
+              "columns": {
+                "bsonType": "object",
+                "additionalProperties": {
+                  "bsonType": ["object", "null"],
+                  "required": ["wheelStack", "wheels", "whiteSpace"],
+                  "properties": {
+                    "wheelstack": {
+                      "bsonType": "objectId",
+                      "description": "must be an objectId"
+                    },
+                    "wheels": {
+                      "bsonType": ["array", "null"],
+                      "items": {
+                        "bsonType": "objectId",
+                        "description": "must be an objectId"
+                      },
+                      "description": "must be an array of objectIds"
+                    },
+                    "whiteSpace": {
+                      "bsonType": "bool",
+                      "description": "mark of the whitespace on Grid, show or not <div>"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

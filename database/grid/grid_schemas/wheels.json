@@ -1,0 +1,30 @@
+{
+  "bsonType": "object",
+  "required": ["wheelId", "batchNumber", "wheelDiameter", "receiptDate", "status"],
+  "properties": {
+    "_id": {
+      "bsonType": "objectId",
+      "description": "must be an objectId and is required"
+    },
+    "wheelId": {
+      "bsonType": "string",
+      "description": "must be a string and is required"
+    },
+    "batchNumber": {
+      "bsonType": "string",
+      "description": "must be a string and is required"
+    },
+    "wheelDiameter": {
+      "bsonType": "int",
+      "description": "must be an integer and is required, diameter of the wheel in mm"
+    },
+    "receiptDate": {
+      "bsonType": "date",
+      "description": "must be a date and is required"
+    },
+    "status": {
+      "bsonType": "string",
+      "description": "must be a string and is required"
+    }
+  }
+}
