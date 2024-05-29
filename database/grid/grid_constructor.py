@@ -2,20 +2,13 @@ import os
 import json
 import datetime
 from motor.motor_asyncio import AsyncIOMotorClient
-from loguru import logger
-from database.mongo_connection import get_mongo_db_client
-import asyncio
-import dotenv
-
-
-# dotenv.load_dotenv('../../.env')
 
 
 class GridConstructor:
 
     def __init__(self,
-                 rows: int,
-                 rows_data: dict[int, dict[str, list[tuple[int, int]] | int]],
+                 rows: int = 0,
+                 rows_data: dict[int, dict[str, list[tuple[int, int]] | int]] = None,
                  db_name: str = 'pmk_grid'):
         """
         Initializes the GridConstructor with the number of rows and the row data.
@@ -27,10 +20,16 @@ class GridConstructor:
                 containing "white_spaces" (list of tuples indicating start and end indices of empty spaces)
                 and "columns" (int indicating the number of columns).
         """
-        if rows <= 0:
-            raise ValueError('`rows` cant be <= 0')
-        self.rows: int = rows
-        self.rows_data = rows_data
+        if rows < 0:
+            raise ValueError('`rows` cant be < 0')
+        # Bad input, need's to be changed.
+        # But, because now I'm just trying to get a first working version without anything else.
+        # We're limited in time, and it's better
+        #  to rush with macaroni than create a cool Classes without actually making it in time.
+        # And actually, there's no task to make it Changeable.
+        # It's like 1 time creation process.
+        self.rows: int = rows or 1
+        self.rows_data: dict[int, dict[str, list[tuple[int, int]] | int]] = rows_data
         self.created_rows: list[str] = []
         self.created_rows_columns: dict[str, list[str]] = {}
         self.default_schemas_path: str = 'grid_schemas'
@@ -104,7 +103,7 @@ class GridConstructor:
 
     async def set_collections_schemas(self,
                                       db: AsyncIOMotorClient,
-                                      folder_path: str = '',
+                                      folder_path: str = 'grid_schemas2',
                                       ) -> None:
         if not os.path.isdir(folder_path):
             folder_path = self.default_schemas_path
@@ -138,32 +137,3 @@ class GridConstructor:
                 }
             whole_rec['rows'].update(rec)
         await db[self.db_name][collection_name].insert_one(whole_rec)
-
-
-# test_rows: int = 6
-# test_rows_data = {}
-# for row in range(test_rows):
-#     test_rows_data[row] = {
-#         'white_spaces': [],
-#         'columns': 5,
-#     }
-#
-#
-# async def test1(test_r, test_r_d):
-#     db = await get_mongo_db_client()
-#     test = GridConstructor(5, {})
-#     test.set_pmk_preset()
-#     test.set_grid()
-#     await test.set_collections_schemas(db)
-#     await test.initiate_grid_db(db)
-#     await db['pmk_grid']['wheels'].insert_one(
-#         {
-#             'wheelId': '1234',
-#             'batchNumber': '123',
-#             'wheelDiameter': 900,
-#             'receiptDate': datetime.datetime.now(),
-#             'status': 'testStatus',
-#         }
-#     )
-#     db.close()
-# asyncio.run(test1(test_rows, test_rows_data))
