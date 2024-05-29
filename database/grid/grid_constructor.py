@@ -2,6 +2,8 @@ import os
 import json
 import datetime
 from motor.motor_asyncio import AsyncIOMotorClient
+from loguru import logger
+from pymongo.errors import CollectionInvalid
 
 
 class GridConstructor:
@@ -32,8 +34,9 @@ class GridConstructor:
         self.rows_data: dict[int, dict[str, list[tuple[int, int]] | int]] = rows_data
         self.created_rows: list[str] = []
         self.created_rows_columns: dict[str, list[str]] = {}
-        self.default_schemas_path: str = 'grid_schemas'
+        self.default_schemas_path: str = 'database/grid/grid_schemas'
         self.db_name: str = db_name
+        self.default_db_preset: str = 'pmk_grid'
 
     @staticmethod
     def row_identifier(row_number: int) -> str:
@@ -53,6 +56,7 @@ class GridConstructor:
 
     @staticmethod
     def load_json_schema(file_path: str) -> str:
+        logger.debug(f'Loading JSON schema from {file_path}')
         with open(file_path, 'r') as file:
             return json.load(file)
 
@@ -61,6 +65,7 @@ class GridConstructor:
         Create rows with columns and specified columns as white spaces.
         Iterates through the rows, generates column identifiers, and marks specified columns as empty.
         """
+        logger.debug('Setting up the grid')
         for row in range(1, self.rows + 1):
             row_identifier: str = self.row_identifier(row)
             row_columns: list[str] = [str(col + 1) for col in range(self.rows_data[row]['columns'])]
@@ -76,6 +81,7 @@ class GridConstructor:
                         break
             self.created_rows.append(row_identifier)
             self.created_rows_columns[row_identifier] = row_columns
+        logger.info(f'Grid set with rows: {self.created_rows}')
 
     def set_pmk_preset(self) -> None:
         """
@@ -87,6 +93,7 @@ class GridConstructor:
         # 9 rows at max, first 30 cols should be empty for the first 3 rows.
         # 1 -> 3 rows == 1 -> 30 cols empty
         # 4 -> 9 rows == 1 -> 58 cols, 0 empty.
+        logger.debug('Setting PMK preset')
         self.rows: int = 9
         # { row number: { 'white_spaces': [(start, end)], 'columns' } }
         self.rows_data: dict[int, dict[str, list[tuple[int, int]] | int]] = {}
@@ -100,27 +107,35 @@ class GridConstructor:
                 'white_spaces': [],
                 'columns': 58,
             }
+        logger.info('PMK preset settings are set')
 
     async def set_collections_schemas(self,
                                       db: AsyncIOMotorClient,
-                                      folder_path: str = 'grid_schemas2',
+                                      folder_path: str = '',
                                       ) -> None:
         if not os.path.isdir(folder_path):
             folder_path = self.default_schemas_path
-            if not os.path.isdir(folder_path):
-                os.mkdir(folder_path)
+        if not os.path.isdir(folder_path):
+            logger.error(f'Schema folder not found: {folder_path}')
+            raise FileNotFoundError(f'Schema folder not found: {folder_path}')
+        logger.debug(f'Setting collections schemas from folder: {folder_path}')
         for filename in os.listdir(folder_path):
             if filename.endswith('.json'):
                 collection_name: str = filename.split('.')[0]
                 schema: str = self.load_json_schema(os.path.join(folder_path, filename))
                 try:
                     await db[self.db_name].create_collection(collection_name, validator={'$jsonSchema': schema})
-                except Exception as er:
+                    logger.info(f'Created collection {collection_name} in DB: {self.db_name}')
+                except CollectionInvalid as col_err:
+                    logger.warning(f'Collection {collection_name} already exists: {col_err}')
+                except Exception as error:
+                    logger.error(f'Error creating collection {collection_name}: {error}')
                     continue
 
     async def initiate_empty_grid_db(self, db: AsyncIOMotorClient, collection_name: str = 'grid') -> None:
+        logger.debug(f'Initializing empty grid DB in collection: {collection_name}')
         whole_rec = {
-            'preset': 'pmk_grid',
+            'preset': self.default_db_preset,
             'createdAt': datetime.datetime.now(),
             'lastChange': datetime.datetime.now(),
             'rows': {},
@@ -136,4 +151,7 @@ class GridConstructor:
                     'whiteSpace': False if len(identifier) > 1 and identifier[-1] != 'W' else True
                 }
             whole_rec['rows'].update(rec)
-        await db[self.db_name][collection_name].insert_one(whole_rec)
+        exist = await db[self.db_name][collection_name].find_one({'preset': self.default_db_preset})
+        if exist is None:
+            await db[self.db_name][collection_name].insert_one(whole_rec)
+            logger.info(f'Initialized empty grid DB in collection: {collection_name}')
