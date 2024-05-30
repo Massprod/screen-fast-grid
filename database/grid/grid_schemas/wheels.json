@@ -17,7 +17,8 @@
     "wheelDiameter": {
       "bsonType": "int",
       "description": "must be an integer and is required, diameter of the wheel in mm",
-      "minimum": 0
+      "minimum": 0,
+      "maximum": 100000
     },
     "receiptDate": {
       "bsonType": "date",
@@ -25,19 +26,19 @@
     },
     "status": {
       "bsonType": "string",
-      "enum": ["laboratory", "shipped", "orderQue"],
+      "enum": ["laboratory", "shipped", "orderQue", "grid", "basePlatform"],
       "description": "must be a string and is required"
     },
     "wheelStack": {
-      "bsonType": "object",
+      "bsonType": ["null", "object"],
       "required": ["wheelStackId", "wheelStackPosition"],
       "properties": {
         "wheelStackId": {
-          "bsonType": ["objectId", "null"],
+          "bsonType": "objectId",
           "description": "indicates ID of the wheelstack containing it"
         },
         "wheelStackPosition": {
-          "bsonType": ["int", "null"],
+          "bsonType": "int",
           "description": "indicates position of the Wheel in the containig it Wheelstack",
           "minimum": 0
         }
