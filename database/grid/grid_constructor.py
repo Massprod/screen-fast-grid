@@ -9,7 +9,7 @@ from pymongo.errors import CollectionInvalid
 class GridConstructor:
 
     def __init__(self,
-                 rows: int = 0,
+                 rows: int = 1,
                  rows_data: dict[int, dict[str, list[tuple[int, int]] | int]] = None,
                  db_name: str = 'pmk_grid'):
         """
@@ -22,7 +22,7 @@ class GridConstructor:
                 containing "white_spaces" (list of tuples indicating start and end indices of empty spaces)
                 and "columns" (int indicating the number of columns).
         """
-        if rows < 0:
+        if rows <= 0:
             raise ValueError('`rows` cant be < 0')
         # Bad input, need's to be changed.
         # But, because now I'm just trying to get a first working version without anything else.
@@ -30,7 +30,7 @@ class GridConstructor:
         #  to rush with macaroni than create a cool Classes without actually making it in time.
         # And actually, there's no task to make it Changeable.
         # It's like 1 time creation process.
-        self.rows: int = rows or 1
+        self.rows: int = rows
         self.rows_data: dict[int, dict[str, list[tuple[int, int]] | int]] = rows_data
         self.created_rows: list[str] = []
         self.created_rows_columns: dict[str, list[str]] = {}
@@ -55,7 +55,7 @@ class GridConstructor:
         return ''.join(result[::-1])
 
     @staticmethod
-    def load_json_schema(file_path: str) -> str:
+    def load_json_schema(file_path: str) -> dict:
         logger.debug(f'Loading JSON schema from {file_path}')
         with open(file_path, 'r') as file:
             return json.load(file)
@@ -122,7 +122,10 @@ class GridConstructor:
         for filename in os.listdir(folder_path):
             if filename.endswith('.json'):
                 collection_name: str = filename.split('.')[0]
-                schema: str = self.load_json_schema(os.path.join(folder_path, filename))
+                schema: dict = self.load_json_schema(os.path.join(folder_path, filename))
+                indexes: dict = {}
+                if 'indexes' in schema:
+                    indexes: dict = schema.pop('indexes')
                 try:
                     await db[self.db_name].create_collection(collection_name, validator={'$jsonSchema': schema})
                     logger.info(f'Created collection {collection_name} in DB: {self.db_name}')
@@ -131,6 +134,14 @@ class GridConstructor:
                 except Exception as error:
                     logger.error(f'Error creating collection {collection_name}: {error}')
                     continue
+                for index in indexes:
+                    keys = index['keys']
+                    options = index.get('options', {})
+                    try:
+                        await db[self.db_name][collection_name].create_index(list(keys.items()), **options)
+                        logger.info(f'Created index on {keys} in collection: {collection_name}')
+                    except Exception as error:
+                        logger.error(f'Error creating index on {keys} in collection: {collection_name}: {error}')
 
     async def initiate_empty_grid_db(self, db: AsyncIOMotorClient, collection_name: str = 'grid') -> None:
         logger.debug(f'Initializing empty grid DB in collection: {collection_name}')
@@ -138,16 +149,21 @@ class GridConstructor:
             'preset': self.default_db_preset,
             'createdAt': datetime.datetime.now(),
             'lastChange': datetime.datetime.now(),
+            'rowsOrder': self.created_rows,
             'rows': {},
         }
         for row in self.created_rows:
             row_columns = self.created_rows_columns[row]
-            rec = {row: {}}
-            rec[row]['columns'] = {}
+            rec = {
+                row: {
+                    'columnsOrder': row_columns,
+                    'columns': {},
+                },
+            }
             for identifier in row_columns:
                 rec[row]['columns'][identifier[0]] = {
                     'wheelStack': None,
-                    'wheels': None,
+                    'wheels': [],
                     'whiteSpace': False if len(identifier) > 1 and identifier[-1] != 'W' else True
                 }
             whole_rec['rows'].update(rec)
