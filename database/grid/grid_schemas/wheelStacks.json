@@ -1,6 +1,15 @@
 {
   "bsonType": "object",
-  "required": ["rowPlacement", "colPlacement", "createdAt", "lastChange", "maxSize", "blocked", "wheels", "status"],
+  "required": [
+    "rowPlacement",
+    "colPlacement",
+    "createdAt",
+    "lastChange",
+    "maxSize",
+    "blocked",
+    "wheels",
+    "status"
+  ],
   "properties": {
     "_id": {
       "bsonType": "objectId",
@@ -28,7 +37,8 @@
     },
     "maxSize": {
       "bsonType": "int",
-      "description": "must be an integer and is required"
+      "description": "must be an integer and is required",
+      "minimum": 1
     },
     "blocked": {
       "bsonType": "bool",
@@ -38,13 +48,25 @@
       "bsonType": "array",
       "items": {
         "bsonType": "objectId",
-        "description": "must be an objectId"
+        "description": "must be an objectId of the placed `wheel`"
       },
-      "description": "must be an array of objectIds and is required"
+      "description": "must be an array of objectIds of the placed `wheel`s and is required",
+      "minItems": 0
     },
     "status": {
       "bsonType": "string",
       "description": "must be a string and is required"
     }
-  }
+  },
+  "indexes": [
+    { "keys": { "rowPlacement": 1 }, "options": { "name": "rowPlacement_index" } },
+    { "keys": { "colPlacement": 1 }, "options": { "name": "colPlacement_index" } },
+    { "keys": { "createdAt": -1 }, "options": { "name": "createdAt_desc_index" } },
+    { "keys": { "lastChange": -1 }, "options": { "name": "lastChange_desc_index" } },
+    { "keys": { "lastOrder": 1 }, "options": { "name": "lastOrder_index" } },
+    { "keys": { "maxSize": 1 }, "options": { "name": "maxSize_index" } },
+    { "keys": { "blocked": 1 }, "options": { "name": "blocked_index" } },
+    { "keys": { "wheels": 1 }, "options": { "name": "wheels_index" } },
+    { "keys": { "status": 1 }, "options": { "name": "status_index" } }
+  ]
 }

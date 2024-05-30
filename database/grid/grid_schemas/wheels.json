@@ -1,6 +1,6 @@
 {
   "bsonType": "object",
-  "required": ["wheelId", "batchNumber", "wheelDiameter", "receiptDate", "status"],
+  "required": ["wheelId", "batchNumber", "wheelDiameter", "receiptDate", "status", "wheelStack"],
   "properties": {
     "_id": {
       "bsonType": "objectId",
@@ -16,7 +16,8 @@
     },
     "wheelDiameter": {
       "bsonType": "int",
-      "description": "must be an integer and is required, diameter of the wheel in mm"
+      "description": "must be an integer and is required, diameter of the wheel in mm",
+      "minimum": 0
     },
     "receiptDate": {
       "bsonType": "date",
@@ -25,6 +26,29 @@
     "status": {
       "bsonType": "string",
       "description": "must be a string and is required"
+    },
+    "wheelStack": {
+      "bsonType": "object",
+      "required": ["wheelStackId", "wheelStackPosition"],
+      "properties": {
+        "wheelStackId": {
+          "bsonType": ["objectId", "null"],
+          "description": "indicates ID of the wheelstack containing it"
+        },
+        "wheelStackPosition": {
+          "bsonType": ["int", "null"],
+          "description": "indicates position of the Wheel in the containig it Wheelstack",
+          "minimum": 0
+        }
+      }
     }
-  }
+  },
+  "indexes": [
+    { "keys": { "wheelId": 1 }, "options": { "unique": true, "name": "wheelId_unique_index" } },
+    { "keys": { "batchNumber": 1 }, "options": { "name": "batchNumber_index" } },
+    { "keys": { "receiptDate": -1 }, "options": { "name": "receiptDate_desc_index" } },
+    { "keys": { "status": 1 }, "options": { "name": "status_index" } },
+    { "keys": { "wheelStack.wheelStackId": 1 }, "options": { "name": "wheelStackId_index" } },
+    { "keys": { "wheelStack.wheelStackPosition": 1 }, "options": { "name": "wheelStackPosition_index" } }
+  ]
 }
