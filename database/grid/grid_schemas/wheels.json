@@ -25,6 +25,7 @@
     },
     "status": {
       "bsonType": "string",
+      "enum": ["laboratory", "shipped", "orderQue"],
       "description": "must be a string and is required"
     },
     "wheelStack": {

@@ -1,10 +1,12 @@
 {
   "bsonType": "object",
   "required": [
+    "placement",
     "rowPlacement",
     "colPlacement",
     "createdAt",
     "lastChange",
+    "lastOrder",
     "maxSize",
     "blocked",
     "wheels",
@@ -14,6 +16,11 @@
     "_id": {
       "bsonType": "objectId",
       "description": "must be an objectId and is required"
+    },
+    "placement": {
+      "bsonType": "string",
+      "enum": ["grid", "base"],
+      "description": "base placement and wait for movement, or in grid itself"
     },
     "rowPlacement": {
       "bsonType": "string",
@@ -32,7 +39,7 @@
       "description": "must be a date and is required"
     },
     "lastOrder": {
-      "bsonType": "objectId",
+      "bsonType": ["objectId", "null"],
       "description": "must be an objectId"
     },
     "maxSize": {
@@ -55,6 +62,7 @@
     },
     "status": {
       "bsonType": "string",
+      "enum": ["orderQue", "shipped"] ,
       "description": "must be a string and is required"
     }
   },
