@@ -1,0 +1,78 @@
+{
+  "bsonType": "object",
+  "required": ["preset", "createdAt", "lastChange", "rowsOrder", "rows"],
+  "properties": {
+    "_id": {
+      "bsonType": "objectId",
+      "description": "must be an objectId and is required"
+    },
+    "preset": {
+      "bsonType": "string",
+      "description": "must be a string and is required"
+    },
+    "createdAt": {
+      "bsonType": "date",
+      "description": "must be a date and is required"
+    },
+    "lastChange": {
+      "bsonType": "date",
+      "description": "must be a date and is required"
+    },
+    "rowsOrder": {
+      "bsonType": "array",
+      "items": {
+        "bsonType": "string",
+        "description": "row identifier, must be unique"
+      },
+      "description": "row identifiers in correct order they should be used"
+    },
+    "rows": {
+      "bsonType": "object",
+      "additionalProperties": {
+        "bsonType": "object",
+        "required": ["columnsOrder", "columns"],
+        "properties": {
+          "columnsOrder": {
+            "bsonType": "array",
+            "items": {
+              "bsonType": "string",
+              "description": "column identifier, must be unique"
+            },
+            "description": "column identifiers in correct order they should be used"
+          },
+          "columns": {
+            "bsonType": "object",
+            "additionalProperties": {
+              "bsonType": "object",
+              "required": ["wheelStack", "wheels", "whiteSpace"],
+              "properties": {
+                "wheelStack": {
+                  "bsonType": ["objectId", "null"],
+                  "description": "must be an objectId"
+                },
+                "wheels": {
+                  "bsonType": "array",
+                  "items": {
+                    "bsonType": "objectId",
+                    "description": "must be an objectId"
+                  },
+                  "description": "must be an array of objectIds",
+                  "minItems": 0
+                },
+                "whiteSpace": {
+                  "bsonType": "bool",
+                  "description": "mark of the whitespace on Grid, show or not <div>"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "indexes": [
+    { "keys": { "preset": 1 }, "options": { "unique": true, "name": "preset_unique_index" } },
+    { "keys": { "createdAt": -1 }, "options": { "name": "createdAt_desc_index" } },
+    { "keys": { "lastChange": -1 }, "options": { "name": "lastChange_desc_index" } }
+  ]
+}

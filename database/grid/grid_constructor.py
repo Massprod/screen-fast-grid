@@ -11,7 +11,7 @@ class GridConstructor:
     def __init__(self,
                  rows: int = 1,
                  rows_data: dict[int, dict[str, list[tuple[int, int]] | int]] = None,
-                 db_name: str = 'pmk_grid'):
+                 db_name: str = 'pmkScreen'):
         """
         Initializes the GridConstructor with the number of rows and the row data.
 
@@ -36,7 +36,7 @@ class GridConstructor:
         self.created_rows_columns: dict[str, list[str]] = {}
         self.default_schemas_path: str = 'database/grid/grid_schemas'
         self.db_name: str = db_name
-        self.default_db_preset: str = 'pmk_grid'
+        self.default_db_preset: str = 'pmkGrid'
 
     @staticmethod
     def row_identifier(row_number: int) -> str:
@@ -76,7 +76,7 @@ class GridConstructor:
                         continue
                     for index in range(start, end + 1):
                         if index < len(row_columns):
-                            row_columns[index] += 'W'
+                            row_columns[index] += '_W'
                             continue
                         break
             self.created_rows.append(row_identifier)
@@ -161,13 +161,66 @@ class GridConstructor:
                 },
             }
             for identifier in row_columns:
-                rec[row]['columns'][identifier[0]] = {
+                rec[row]['columns'][identifier.removesuffix('_W')] = {
                     'wheelStack': None,
                     'wheels': [],
-                    'whiteSpace': False if len(identifier) > 1 and identifier[-1] != 'W' else True
+                    'whiteSpace': True if (len(identifier) > 2 and identifier[-2:] == '_W') else False
                 }
             whole_rec['rows'].update(rec)
         exist = await db[self.db_name][collection_name].find_one({'preset': self.default_db_preset})
+        if exist is None:
+            await db[self.db_name][collection_name].insert_one(whole_rec)
+            logger.info(f'Initialized empty grid DB in collection: {collection_name}')
+
+    async def create_base_placement_db(self, db: AsyncIOMotorClient, rows: int,
+                                       rows_data: dict[int, dict[str, list[tuple[int, int]] | int]],
+                                       collection_name: str = 'basePlacement',
+                                       preset: str = 'pmkBase') -> None:
+        logger.debug('Setting up the base placement')
+        created_rows: list[str] = []
+        created_rows_columns: dict[str, list[str]] = {}
+        for row in range(1, rows + 1):
+            row_columns: list[str] = [str(col + 1) for col in range(rows_data[row]['columns'])]
+            if rows_data and row in rows_data:
+                white_spaces: list[tuple[int, int]] = rows_data[row]['white_spaces']
+                for start, end in white_spaces:
+                    if start < 0:
+                        continue
+                    for index in range(start, end + 1):
+                        if index < len(row_columns):
+                            print(white_spaces)
+                            row_columns[index] += '_W'
+                            continue
+                        break
+            row_name: str = str(row)
+            created_rows.append(row_name)
+            created_rows_columns[row_name] = row_columns
+        logger.info(f'Base placement set with rows: {created_rows}')
+
+        logger.debug(f'Initializing empty grid DB in collection: {collection_name}')
+        whole_rec = {
+            'preset': preset,
+            'createdAt': datetime.datetime.now(),
+            'lastChange': datetime.datetime.now(),
+            'rowsOrder': created_rows,
+            'rows': {},
+        }
+        for row in created_rows:
+            row_columns = created_rows_columns[row]
+            rec = {
+                row: {
+                    'columnsOrder': row_columns,
+                    'columns': {},
+                },
+            }
+            for identifier in row_columns:
+                rec[row]['columns'][identifier.removesuffix('_W')] = {
+                    'wheelStack': None,
+                    'wheels': [],
+                    'whiteSpace': True if len(identifier) > 2 and identifier[-2:] == '_W' else False
+                }
+            whole_rec['rows'].update(rec)
+        exist = await db[self.db_name][collection_name].find_one({'preset': preset})
         if exist is None:
             await db[self.db_name][collection_name].insert_one(whole_rec)
             logger.info(f'Initialized empty grid DB in collection: {collection_name}')

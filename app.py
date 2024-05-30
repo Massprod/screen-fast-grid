@@ -31,3 +31,12 @@ async def create_basic_grid():
     empty_grid_conf.set_grid()
     await empty_grid_conf.set_collections_schemas(db)
     await empty_grid_conf.initiate_empty_grid_db(db)
+    # Change after we see the complete idea.
+    base_preset_rows: int = 2
+    base_preset_rows_data = {}
+    for row in range(1, base_preset_rows + 1):
+        base_preset_rows_data[row] = {
+            'columns': 4,
+            'white_spaces': []
+        }
+    await empty_grid_conf.create_base_placement_db(db, base_preset_rows, base_preset_rows_data)
