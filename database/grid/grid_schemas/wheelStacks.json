@@ -1,6 +1,7 @@
 {
   "bsonType": "object",
   "required": [
+    "originalPisId",
     "placement",
     "rowPlacement",
     "colPlacement",
@@ -16,6 +17,10 @@
     "_id": {
       "bsonType": "objectId",
       "description": "must be an objectId and is required"
+    },
+    "originalPisId": {
+      "bsonType": "string",
+      "description": "original id of the wheelstack we got from PIS db"
     },
     "placement": {
       "bsonType": "string",
@@ -62,7 +67,7 @@
     },
     "status": {
       "bsonType": "string",
-      "enum": ["orderQue", "shipped"] ,
+      "enum": ["orderQue", "shipped", "grid", "basePlatform"] ,
       "description": "must be a string and is required"
     }
   },
@@ -75,6 +80,7 @@
     { "keys": { "maxSize": 1 }, "options": { "name": "maxSize_index" } },
     { "keys": { "blocked": 1 }, "options": { "name": "blocked_index" } },
     { "keys": { "wheels": 1 }, "options": { "name": "wheels_index" } },
-    { "keys": { "status": 1 }, "options": { "name": "status_index" } }
+    { "keys": { "status": 1 }, "options": { "name": "status_index" } },
+    { "keys": { "originalPisId" :  1 }, "options":  { "name": "originalPisId" } }
   ]
 }
