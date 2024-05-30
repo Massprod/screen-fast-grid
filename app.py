@@ -4,6 +4,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from database.mongo_connection import get_mongo_db_client
 from database.grid.grid_constructor import GridConstructor
 from loguru import logger
+from routers.wheels.router import router as wheel_router
 
 
 load_dotenv('.env')
@@ -18,6 +19,7 @@ logger.add(
 )
 
 app = FastAPI()
+app.include_router(wheel_router, prefix='/wheel', tags=['wheel'])
 
 
 @app.on_event('startup')
