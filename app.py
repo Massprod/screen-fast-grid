@@ -19,7 +19,7 @@ logger.add(
 )
 
 app = FastAPI()
-app.include_router(wheel_router, prefix='/wheel', tags=['wheel'])
+app.include_router(wheel_router, prefix='/wheels', tags=['wheel'])
 
 
 @app.on_event('startup')
