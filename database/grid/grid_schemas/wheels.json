@@ -17,7 +17,7 @@
     "wheelDiameter": {
       "bsonType": "int",
       "description": "must be an integer and is required, diameter of the wheel in mm",
-      "minimum": 0,
+      "minimum": 1,
       "maximum": 100000
     },
     "receiptDate": {
