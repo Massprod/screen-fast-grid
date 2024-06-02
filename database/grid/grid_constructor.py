@@ -163,7 +163,6 @@ class GridConstructor:
             for identifier in row_columns:
                 rec[row]['columns'][identifier.removesuffix('_W')] = {
                     'wheelStack': None,
-                    'wheels': [],
                     'whiteSpace': True if (len(identifier) > 2 and identifier[-2:] == '_W') else False
                 }
             whole_rec['rows'].update(rec)
@@ -216,7 +215,6 @@ class GridConstructor:
             for identifier in row_columns:
                 rec[row]['columns'][identifier.removesuffix('_W')] = {
                     'wheelStack': None,
-                    'wheels': [],
                     'whiteSpace': True if len(identifier) > 2 and identifier[-2:] == '_W' else False
                 }
             whole_rec['rows'].update(rec)

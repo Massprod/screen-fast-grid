@@ -44,20 +44,11 @@
             "bsonType": "object",
             "additionalProperties": {
               "bsonType": "object",
-              "required": ["wheelStack", "wheels", "whiteSpace"],
+              "required": ["wheelStack", "whiteSpace"],
               "properties": {
                 "wheelStack": {
                   "bsonType": ["objectId", "null"],
                   "description": "must be an objectId"
-                },
-                "wheels": {
-                  "bsonType": "array",
-                  "items": {
-                    "bsonType": "objectId",
-                    "description": "must be an objectId"
-                  },
-                  "description": "must be an array of objectIds",
-                  "minItems": 0
                 },
                 "whiteSpace": {
                   "bsonType": "bool",
