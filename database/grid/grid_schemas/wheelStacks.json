@@ -45,12 +45,13 @@
     },
     "lastOrder": {
       "bsonType": ["objectId", "null"],
-      "description": "must be an objectId"
+      "description": "`objectId` of the order, of `null` if no orders placed"
     },
     "maxSize": {
       "bsonType": "int",
       "description": "must be an integer and is required",
-      "minimum": 1
+      "minimum": 1,
+      "maximum": 6
     },
     "blocked": {
       "bsonType": "bool",
@@ -59,8 +60,8 @@
     "wheels": {
       "bsonType": "array",
       "items": {
-        "bsonType": "objectId",
-        "description": "must be an objectId of the placed `wheel`"
+        "bsonType": "string",
+        "description": "must be an `wheelId` of the placed `wheel`, not the `objectId`"
       },
       "description": "must be an array of objectIds of the placed `wheel`s and is required",
       "minItems": 0
