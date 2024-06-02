@@ -5,6 +5,7 @@ from database.mongo_connection import get_mongo_db_client
 from database.grid.grid_constructor import GridConstructor
 from loguru import logger
 from routers.wheels.router import router as wheel_router
+from routers.wheelstacks.router import router as wheelstack_router
 
 
 load_dotenv('.env')
@@ -18,8 +19,13 @@ logger.add(
     diagnose=True,
 )
 
-app = FastAPI()
+app = FastAPI(
+    title='Back Screen',
+    version='0.0.1',
+    description='Back part of the screen app',
+)
 app.include_router(wheel_router, prefix='/wheels', tags=['wheel'])
+app.include_router(wheelstack_router, prefix='/wheelstacks', tags=['WheelStack'] )
 
 
 @app.on_event('startup')
