@@ -7,8 +7,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 class WheelStackStatus(str, Enum):
     orderQue = 'orderQue'  # Waiting for order to be executed
     shipped = 'shipped'  # Moved from the grid (removed)
-    grid = 'grid'  # Currently positioned in the grid
-    basePlatform = 'basePlatform'  # Positioned on the platform (before grid)
+    inActive = 'inActive'  # Exist 0)
 
 
 class WheelStackPlacement(str, Enum):
@@ -19,6 +18,9 @@ class WheelStackPlacement(str, Enum):
 class CreateWheelStackRequest(BaseModel):
     originalPisId: str = Field(...,
                                description='Original ID created by PIS, before its given to our service.')
+    batchNumber: str = Field(...,
+                             description="batch number of the WheelStack, we can't have wheels with different "
+                                         "batchNumbers inside the one Wheelstack")
     placement: WheelStackPlacement = Field(...,
                                            description='Current placement of this `wheelStack`')
     rowPlacement: str = Field(...,
@@ -73,6 +75,7 @@ class CreateWheelStackRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "originalPisId": "PIS12345",
+                "batchNumber": "batch12345",
                 "placement": "base",
                 "rowPlacement": "A",
                 "colPlacement": "1",
@@ -82,7 +85,7 @@ class CreateWheelStackRequest(BaseModel):
                 "maxSize": 6,
                 "blocked": False,
                 "wheels": [],
-                "status": "basePlatform"
+                "status": "inActive"
             }
         }
 
@@ -126,6 +129,6 @@ class UpdateWheelStackRequest(BaseModel):
                 "colPlacement": "3",
                 "blocked": False,
                 "wheels": [],
-                "status": "grid"
+                "status": "inActive"
             }
         }

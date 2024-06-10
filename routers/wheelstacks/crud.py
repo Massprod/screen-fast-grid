@@ -4,17 +4,15 @@ from fastapi import HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorClient
 from .models.models import UpdateWheelStackRequest
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, timezone
 from ..wheels.crud import db_find_wheel
 
 
-async def make_json_friendly(unfriendly_dict: dict) -> dict:
-    for key, value in unfriendly_dict.items():
-        if isinstance(value, ObjectId):
-            unfriendly_dict[key] = str(unfriendly_dict[key])
-        elif isinstance(value, datetime):
-            unfriendly_dict[key] = unfriendly_dict[key].isoformat()
-    return unfriendly_dict
+async def wheelstacks_make_json_friendly(wheelstacks_data):
+    wheelstacks_data['_id'] = str(wheelstacks_data['_id'])
+    wheelstacks_data['createdAt'] = wheelstacks_data['createdAt'].isoformat()
+    wheelstacks_data['lastChange'] = wheelstacks_data['lastChange'].isoformat()
+    return wheelstacks_data
 
 
 async def db_find_wheelstack(
@@ -55,8 +53,8 @@ async def db_insert_wheelstack(
 ):
     try:
         wheelstacks_collection = db[db_name][db_collection]
-        wheel_stack_data['createdAt'] = datetime.now()
-        wheel_stack_data['lastChange'] = datetime.now()
+        wheel_stack_data['createdAt'] = datetime.now(timezone.utc)
+        wheel_stack_data['lastChange'] = datetime.now(timezone.utc)
         res = await wheelstacks_collection.insert_one(wheel_stack_data)
         return res
     except PyMongoError as e:
@@ -99,9 +97,28 @@ async def db_update_wheelstack(
                                     detail=f'{wheel_id} ID doesnt exist in DB')
         if not new_data['wheels']:
             new_data.pop('wheels')
-        new_data['lastChange'] = datetime.now()
+        new_data['lastChange'] = datetime.now(timezone.utc)
         res = await wheelstacks_collection.update_one({'_id': wheelstack_object_id}, {'$set': new_data})
         return res
     except PyMongoError as e:
         logger.error(f"Error updating `wheelStack`: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database update error")
+
+
+async def db_find_wheelstack_id_by_placement(
+        db: AsyncIOMotorClient,
+        row: str,
+        column: str,
+        db_collection: str,
+        preset: str,
+        db_name: str = 'pmkScreen',
+):
+    try:
+        collection = db[db_name][db_collection]
+        projection = {f'rows.{row}.columns.{column}.wheelStack': 1}
+        resp = await collection.find_one({'preset': preset}, projection)
+        wheelstack_object_id = resp['rows'][row]['columns'][column]['wheelStack']
+        return wheelstack_object_id
+    except PyMongoError as e:
+        logger.error(f"Error inserting wheel: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database insertion error")

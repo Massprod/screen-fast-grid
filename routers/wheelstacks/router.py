@@ -1,13 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Path, Body
 from fastapi.responses import JSONResponse, Response
-from database.mongo_connection import get_db
+from database.mongo_connection import mongo_client
 from motor.motor_asyncio import AsyncIOMotorClient
 from loguru import logger
 from .models.models import CreateWheelStackRequest, UpdateWheelStackRequest
 from .models.response_models import WheelsStackStandardResponse
-from .crud import (db_insert_wheelstack, db_delete_wheelstack,
-                   make_json_friendly, db_update_wheelstack,
-                   db_find_wheelstack, db_find_wheelstack_by_pis)
+from .crud import (db_insert_wheelstack, db_delete_wheelstack, wheelstacks_make_json_friendly,
+                   db_update_wheelstack, db_find_wheelstack, db_find_wheelstack_by_pis)
 from bson.errors import InvalidId
 from bson import ObjectId
 
@@ -29,7 +28,7 @@ async def create_wheelstack(
             description="Every parameter of the `wheelStack` is mandatory,"
                         " except the `lastChange`. Because this `wheelStack` might be never changed.",
         ),
-        db: AsyncIOMotorClient = Depends(get_db),
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
 ):
     wheel_stack_data = wheel_stack.dict()
     resp = WheelsStackStandardResponse()
@@ -47,7 +46,7 @@ async def create_wheelstack(
     resp.set_status(status_code)
     resp.set_create_message(result.inserted_id)
     wheel_stack_data['_id'] = result.inserted_id
-    resp.data = await make_json_friendly(wheel_stack_data)
+    resp.data = await wheelstacks_make_json_friendly(wheel_stack_data)
     return JSONResponse(content=resp.dict(), status_code=status_code)
 
 
@@ -59,9 +58,9 @@ async def create_wheelstack(
 )
 async def find_wheelstack(
         wheelstack_object_id: str = Path(description='`objectId` of stored wheelstack'),
-        db: AsyncIOMotorClient = Depends(get_db)
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client)
 ):
-    status_code = status.HTTP_302_FOUND
+    status_code = status.HTTP_200_OK
     # change to a utility function, because it should be used everywhere.
     try:
         object_id = ObjectId(wheelstack_object_id)
@@ -76,7 +75,7 @@ async def find_wheelstack(
         raise HTTPException(detail=resp.dict(), status_code=status_code)
     resp.set_status(status_code)
     resp.set_found_message(wheelstack_object_id)
-    resp.data = await make_json_friendly(result)
+    resp.data = await wheelstacks_make_json_friendly(result)
     return JSONResponse(content=resp.dict(), status_code=status_code)
 
 
@@ -88,7 +87,7 @@ async def find_wheelstack(
 async def update_wheelstack(
         wheelstack_new_data: UpdateWheelStackRequest,
         wheelstack_object_id: str = Path(description='`objectId` of stored wheelstack'),
-        db: AsyncIOMotorClient = Depends(get_db)
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client)
 ):
     status_code = status.HTTP_200_OK
     try:
@@ -110,7 +109,7 @@ async def update_wheelstack(
 )
 async def delete_wheelstack(
         wheelstack_object_id: str = Path(description='`objectId` of a stored wheelstack'),
-        db: AsyncIOMotorClient = Depends(get_db)
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client)
 ):
     status_code = status.HTTP_200_OK
     try:
