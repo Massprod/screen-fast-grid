@@ -1,9 +1,10 @@
 from os import getenv
 from motor.motor_asyncio import AsyncIOMotorClient
 from loguru import logger
+from dotenv import load_dotenv
 
 
-async def create_connection_string(login: str = '', password: str = '', server: str = '') -> str:
+def create_connection_string(login: str = '', password: str = '', server: str = '') -> str:
     """
     Creates a MongoDB connection string using provided credentials or environment variables.
 
@@ -31,34 +32,53 @@ async def create_connection_string(login: str = '', password: str = '', server: 
         raise
 
 
-async def get_mongo_db_client(connection_string: str = '') -> AsyncIOMotorClient:
-    """
-    Connects to the specified MongoDB database using the provided connection string.
+class MongoDBClient:
 
-    Args:
-        connection_string (str): The MongoDB connection string. Defaults to an empty string.
+    def __init__(self):
+        self.client: AsyncIOMotorClient | None = None
 
-    Returns:
-        AsyncIOMotorDatabase: The connected MongoDB database instance.
+    def set_mongo_db_client(self, connection_string: str = ''):
+        """
+        Connects to the specified MongoDB database using the provided connection string.
 
-    Raises:
-        Exception: If the connection to MongoDB fails.
-    """
-    try:
-        if not connection_string:
-            connection_string = await create_connection_string()
-        db_client = AsyncIOMotorClient(connection_string)
-        # Test the connection
-        await db_client.admin.command('ping')
-        return db_client
-    except Exception as e:
-        logger.error(f"Failed to connect to MongoDB: {e}")
-        raise
+        Args:
+            connection_string (str): The MongoDB connection string. Defaults to an empty string.
+
+        Returns:
+            AsyncIOMotorDatabase: The connected MongoDB database instance.
+
+        Raises:
+            Exception: If the connection to MongoDB fails.
+        """
+        try:
+            if not connection_string:
+                connection_string = create_connection_string()
+            self.client = AsyncIOMotorClient(connection_string, maxPoolSize=20000)
+            # Test the connection
+            self.client.admin.command('ping')
+            logger.info('MongoDB connection created.')
+        except Exception as e:
+            logger.error(f"Failed to connect to MongoDB: {e}")
+            raise
+
+    def close_client(self):
+        if self.client:
+            self.client.close()
+            logger.info("MongoDB client closed")
+
+    def get_client(self):
+        return self.client
+
+    def depend_client(self):
+        try:
+            yield self.client
+        finally:
+            pass
 
 
-async def get_db():
-    test = await get_mongo_db_client()
-    try:
-        yield test
-    finally:
-        test.close()
+load_dotenv('.env')
+
+
+con_string = create_connection_string()
+mongo_client = MongoDBClient()
+mongo_client.set_mongo_db_client(con_string)
