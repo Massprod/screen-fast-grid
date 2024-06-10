@@ -2,6 +2,7 @@
   "bsonType": "object",
   "required": [
     "originalPisId",
+    "batchNumber",
     "placement",
     "rowPlacement",
     "colPlacement",
@@ -21,6 +22,10 @@
     "originalPisId": {
       "bsonType": "string",
       "description": "original id of the wheelstack we got from PIS db"
+    },
+    "batchNumber": {
+      "bsonType": "string",
+      "description": "batch number of the WheelStack, we can't have wheels with different batchNumbers inside the one Wheelstack"
     },
     "placement": {
       "bsonType": "string",
@@ -68,7 +73,7 @@
     },
     "status": {
       "bsonType": "string",
-      "enum": ["orderQue", "shipped", "grid", "basePlatform"] ,
+      "enum": ["orderQue", "shipped", "inActive"] ,
       "description": "must be a string and is required"
     }
   },

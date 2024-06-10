@@ -53,6 +53,10 @@
                 "whiteSpace": {
                   "bsonType": "bool",
                   "description": "mark of the whitespace on Grid, show or not <div>"
+                },
+                "blocked": {
+                  "bsonType": "bool",
+                  "description": "Blocked for order placement == we can't use it or not"
                 }
               }
             }
