@@ -1,7 +1,7 @@
-from .crud import db_insert_wheel, db_find_wheel, make_json_friendly, db_update_wheel, db_delete_wheel
+from .crud import db_insert_wheel, db_find_wheel, db_update_wheel, db_delete_wheel, wheels_make_json_friendly
 from fastapi import APIRouter, Depends, HTTPException, status, Path, Body
 from fastapi.responses import JSONResponse, Response
-from database.mongo_connection import get_db
+from database.mongo_connection import mongo_client
 from .models.models import CreateWheelRequest
 from .models.response_models import (WheelsStandardResponse,
                                      update_response_examples,
@@ -19,21 +19,21 @@ router = APIRouter()
     name='Find Wheel',
     description="Retrieve the details of a wheel by it's ID",
     response_class=JSONResponse,
-    status_code=status.HTTP_302_FOUND,
+    status_code=status.HTTP_200_OK,
     response_description='The details of the wheel, if found',
     responses={
-        status.HTTP_302_FOUND: find_response_examples[status.HTTP_302_FOUND],
+        status.HTTP_200_OK: find_response_examples[status.HTTP_200_OK],
         status.HTTP_404_NOT_FOUND: find_response_examples[status.HTTP_404_NOT_FOUND],
     }
 )
 async def find_wheel(
         wheel_id: str = Path(description="The ID of the wheel to retrieve", example="W12345"),
-        db: AsyncIOMotorClient = Depends(get_db),
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
 ):
     logger.info(f"Searching for a wheel with ID: {wheel_id}")
     result = await db_find_wheel(db, wheel_id)
     resp = WheelsStandardResponse()
-    status_code = status.HTTP_302_FOUND
+    status_code = status.HTTP_200_OK
     if result is None:
         logger.warning(f"Wheel with ID: {wheel_id} not found")
         status_code = status.HTTP_404_NOT_FOUND
@@ -43,7 +43,7 @@ async def find_wheel(
     logger.info(f"Wheel with ID: {wheel_id} found")
     resp.set_status(status_code)
     resp.set_found_message(wheel_id)
-    resp.data = await make_json_friendly(result)
+    resp.data = await wheels_make_json_friendly(result)
     return JSONResponse(content=resp.dict(), status_code=status_code)
 
 
@@ -75,7 +75,7 @@ async def update_wheel(
                 "wheelStack": None
             }
         ),
-        db: AsyncIOMotorClient = Depends(get_db),
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
 ):
     wheel_data = wheel.dict()
     wheel_id = wheel_data['wheelId']
@@ -125,7 +125,7 @@ async def create_wheel(
                 "status": "laboratory"
             }
         ),
-        db: AsyncIOMotorClient = Depends(get_db),
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
 ):
     wheel_data = wheel.dict()
     wheel_id = wheel_data['wheelId']
@@ -140,7 +140,7 @@ async def create_wheel(
         raise HTTPException(detail=resp.dict(), status_code=status_code)
     result = await db_insert_wheel(db, wheel_data)
     wheel_data['_id'] = result.inserted_id
-    resp.data = await make_json_friendly(wheel_data)
+    resp.data = await wheels_make_json_friendly(wheel_data)
     resp.set_status(status_code)
     resp.set_create_message(wheel_id)
     return JSONResponse(content=resp.dict(), status_code=status_code)
@@ -156,7 +156,7 @@ async def create_wheel(
 )
 async def delete_wheel(
         wheel_id: str = Path(description='The ID of the wheel to delete', example='W12345'),
-        db: AsyncIOMotorClient = Depends(get_db),
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
 ):
     result = await db_delete_wheel(db, wheel_id)
     status_code: int = status.HTTP_200_OK

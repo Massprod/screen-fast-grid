@@ -49,7 +49,7 @@ class WheelsStandardResponse(BaseModel):
 
 
 find_response_examples = {
-    res_status.HTTP_302_FOUND: {
+    res_status.HTTP_200_OK: {
         "description": "Wheel found",
         "content": {
             "application/json": {

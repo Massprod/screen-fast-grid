@@ -4,12 +4,10 @@ from fastapi import HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorClient
 
 
-async def make_json_friendly(unfriendly_dict: dict) -> dict:
-    if '_id' in unfriendly_dict:
-        unfriendly_dict['_id'] = str(unfriendly_dict['_id'])
-    if 'receiptDate' in unfriendly_dict:
-        unfriendly_dict['receiptDate'] = unfriendly_dict['receiptDate'].isoformat()
-    return unfriendly_dict
+async def wheels_make_json_friendly(wheels_data):
+    wheels_data['_id'] = str(wheels_data['_id'])
+    wheels_data['receiptDate'] = wheels_data['receiptDate'].isoformat()
+    return wheels_data
 
 
 async def db_insert_wheel(
