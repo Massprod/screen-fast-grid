@@ -1,6 +1,6 @@
 import os
 import json
-import datetime
+from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorClient
 from loguru import logger
 from pymongo.errors import CollectionInvalid
@@ -147,13 +147,18 @@ class GridConstructor:
         logger.debug(f'Initializing empty grid DB in collection: {collection_name}')
         whole_rec = {
             'preset': self.default_db_preset,
-            'createdAt': datetime.datetime.now(),
-            'lastChange': datetime.datetime.now(),
+            'createdAt': datetime.now(timezone.utc),
+            'lastChange': datetime.now(timezone.utc),
             'rowsOrder': self.created_rows,
             'rows': {},
         }
         for row in self.created_rows:
             row_columns = self.created_rows_columns[row]
+            white_spaces: set[str] = set()
+            for index, column_identifier in enumerate(row_columns):
+                if '_W' == row_columns[index][-2:]:
+                    row_columns[index] = row_columns[index].removesuffix('_W')
+                    white_spaces.add(row_columns[index])
             rec = {
                 row: {
                     'columnsOrder': row_columns,
@@ -161,9 +166,10 @@ class GridConstructor:
                 },
             }
             for identifier in row_columns:
-                rec[row]['columns'][identifier.removesuffix('_W')] = {
+                rec[row]['columns'][identifier] = {
                     'wheelStack': None,
-                    'whiteSpace': True if (len(identifier) > 2 and identifier[-2:] == '_W') else False
+                    'whiteSpace': True if (identifier in white_spaces) else False,
+                    'blocked': True if (identifier in white_spaces) else False
                 }
             whole_rec['rows'].update(rec)
         exist = await db[self.db_name][collection_name].find_one({'preset': self.default_db_preset})
@@ -199,13 +205,18 @@ class GridConstructor:
         logger.debug(f'Initializing empty grid DB in collection: {collection_name}')
         whole_rec = {
             'preset': preset,
-            'createdAt': datetime.datetime.now(),
-            'lastChange': datetime.datetime.now(),
+            'createdAt': datetime.now(timezone.utc),
+            'lastChange': datetime.now(timezone.utc),
             'rowsOrder': created_rows,
             'rows': {},
         }
         for row in created_rows:
             row_columns = created_rows_columns[row]
+            white_spaces: set[str] = set()
+            for index, column_identifier in enumerate(row_columns):
+                if '_W' == row_columns[index][-2:]:
+                    row_columns[index] = row_columns[index].removesuffix('_W')
+                    white_spaces.add(row_columns[index])
             rec = {
                 row: {
                     'columnsOrder': row_columns,
@@ -213,9 +224,10 @@ class GridConstructor:
                 },
             }
             for identifier in row_columns:
-                rec[row]['columns'][identifier.removesuffix('_W')] = {
+                rec[row]['columns'][identifier] = {
                     'wheelStack': None,
-                    'whiteSpace': True if len(identifier) > 2 and identifier[-2:] == '_W' else False
+                    'whiteSpace': True if (identifier in white_spaces) else False,
+                    'blocked': True if (identifier in white_spaces) else False,
                 }
             whole_rec['rows'].update(rec)
         exist = await db[self.db_name][collection_name].find_one({'preset': preset})
