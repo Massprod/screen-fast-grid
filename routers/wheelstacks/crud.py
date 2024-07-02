@@ -10,6 +10,7 @@ from ..wheels.crud import db_find_wheel
 
 async def wheelstacks_make_json_friendly(wheelstacks_data):
     wheelstacks_data['_id'] = str(wheelstacks_data['_id'])
+    wheelstacks_data['lastOrder'] = str(wheelstacks_data['lastOrder'])
     wheelstacks_data['createdAt'] = wheelstacks_data['createdAt'].isoformat()
     wheelstacks_data['lastChange'] = wheelstacks_data['lastChange'].isoformat()
     return wheelstacks_data

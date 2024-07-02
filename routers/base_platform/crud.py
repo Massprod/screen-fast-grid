@@ -8,7 +8,12 @@ async def platform_make_json_friendly(dict_to_convert):
     dict_to_convert['lastChange'] = dict_to_convert['lastChange'].isoformat()
     for row in dict_to_convert['rows']:
         for col in dict_to_convert['rows'][row]['columns']:
-            dict_to_convert['rows'][row]['columns'][col]['wheelStack'] = str(dict_to_convert['rows'][row]['columns'][col]['wheelStack'])
+            if dict_to_convert['rows'][row]['columns'][col]['wheelStack'] is None:
+                continue
+            dict_to_convert['rows'][row]['columns'][col]['wheelStack'] = str(
+                dict_to_convert['rows'][row]['columns'][col]['wheelStack']
+            )
+    return dict_to_convert
 
 
 async def get_platform(
