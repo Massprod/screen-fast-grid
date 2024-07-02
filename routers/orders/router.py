@@ -13,10 +13,36 @@ from utility.db_utilities import get_preset, get_object_id, time_w_timezone
 from routers.orders.order_actions import (orders_get_placement_data, orders_complete_whole_wheelstack_move,
                                           orders_block_wheelstack, orders_block_placement,
                                           orders_unblock_placement, orders_cancel_unblock_wheelstack)
+from routers.orders.crud import db_get_all_active_orders, get_all_orders_make_json_friendly
 from constants import *
 
 
 router = APIRouter()
+
+
+@router.get(
+    path='/active',
+    description='Get All Active Orders',
+    status_code=status.HTTP_200_OK,
+    response_description='Details of every active order from DB',
+    # response_model=
+)
+async def get_all_active_orders(
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+):
+    # There's no way it can fail, because it will raise exception in `db_get_all_active_orders`.
+    # If there are no records, we will just get empty dict, so it's only `200`.
+    status_code = status.HTTP_200_OK
+    res = await db_get_all_active_orders(db)
+    all_orders = {}
+    async for order in res:
+        cor_data = await get_all_orders_make_json_friendly(order)
+        all_orders[cor_data['_id']] = cor_data
+    resp = OrderStandardResponse()
+    resp.set_status(status_code)
+    resp.set_get_all_message()
+    resp.data = all_orders
+    return JSONResponse(content=resp.dict(), status_code=status_code)
 
 
 @router.post(
@@ -31,7 +57,7 @@ async def create_full_move_order(
             ...,
             description='Order creation data',
         ),
-        db: AsyncIOMotorClient = Depends(mongo_client.depend_client)
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
 ):
     # We can create full Move order.
     # 1 - if SOURCE is not empty and not blocked
@@ -186,8 +212,8 @@ async def complete_order(
     # So, stick to just completing order for now.
     if ORDER_MOVE_WHOLE_STACK == order_data['orderType']:
         result = await orders_complete_whole_wheelstack_move(db, order_data)
-        print(result)
         return Response(status_code=status_code)
+    # complete_order - will cover all completions, we will just filter them.
 
 
 @router.post(
