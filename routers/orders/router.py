@@ -13,9 +13,8 @@ from utility.db_utilities import get_preset, get_object_id, time_w_timezone
 from routers.orders.order_actions import (orders_get_placement_data, orders_complete_whole_wheelstack_move,
                                           orders_block_wheelstack, orders_block_placement,
                                           orders_unblock_placement, orders_cancel_unblock_wheelstack)
-from routers.orders.crud import db_get_all_active_orders, get_all_orders_make_json_friendly
+from routers.orders.crud import db_get_all_orders, get_all_orders_make_json_friendly
 from constants import *
-
 
 router = APIRouter()
 
@@ -33,14 +32,36 @@ async def get_all_active_orders(
     # There's no way it can fail, because it will raise exception in `db_get_all_active_orders`.
     # If there are no records, we will just get empty dict, so it's only `200`.
     status_code = status.HTTP_200_OK
-    res = await db_get_all_active_orders(db)
+    res = await db_get_all_orders(db, db_collection='activeOrders')
     all_orders = {}
     async for order in res:
         cor_data = await get_all_orders_make_json_friendly(order)
         all_orders[cor_data['_id']] = cor_data
     resp = OrderStandardResponse()
     resp.set_status(status_code)
-    resp.set_get_all_message()
+    resp.set_get_all_message('active')
+    resp.data = all_orders
+    return JSONResponse(content=resp.dict(), status_code=status_code)
+
+
+@router.get(
+    path='/completed',
+    description='Get All Completed Orders',
+    status_code=status.HTTP_200_OK,
+    response_description='Details of every completed order from DB',
+)
+async def get_all_completed_orders(
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+):
+    status_code = status.HTTP_200_OK
+    res = await db_get_all_orders(db, db_collection='completedOrders')
+    all_orders = {}
+    async for order in res:
+        cor_data = await get_all_orders_make_json_friendly(order)
+        all_orders[cor_data['_id']] = cor_data
+    resp = OrderStandardResponse()
+    resp.set_status(status_code)
+    resp.set_get_all_message('completed')
     resp.data = all_orders
     return JSONResponse(content=resp.dict(), status_code=status_code)
 
