@@ -66,6 +66,28 @@ async def get_all_completed_orders(
     return JSONResponse(content=resp.dict(), status_code=status_code)
 
 
+@router.get(
+    path='/canceled',
+    description='Get All Canceled Orders',
+    status_code=status.HTTP_200_OK,
+    response_description='Details of every completed order from DB',
+)
+async def get_all_canceled_orders(
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+):
+    status_code = status.HTTP_200_OK
+    res = await db_get_all_orders(db, db_collection='canceledOrders')
+    all_orders = {}
+    async for order in res:
+        cor_data = await get_all_orders_make_json_friendly(order)
+        all_orders[cor_data['_id']] = cor_data
+    resp = OrderStandardResponse()
+    resp.set_status(status_code)
+    resp.set_get_all_message('canceled')
+    resp.data = all_orders
+    return JSONResponse(content=resp.dict(), status_code=status_code)
+
+
 @router.post(
     path='/move',
     description='Create New FullMove Order',

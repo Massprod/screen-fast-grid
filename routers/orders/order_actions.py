@@ -14,7 +14,7 @@ from utility.db_utilities import get_preset, time_w_timezone
 # Completions
 async def orders_complete_whole_wheelstack_move(db: AsyncIOMotorClient, order_data: dict):
     # Chaos which need's to be completely changed after a first test version.
-    print(order_data)
+    # print(order_data)
     affected_wheelstack_object_id = order_data['affectedWheelStacks']['source']
     destination = order_data['destination']['type']
     destination_row, destination_col = order_data['destination']['identifier'].split(',')
@@ -24,7 +24,7 @@ async def orders_complete_whole_wheelstack_move(db: AsyncIOMotorClient, order_da
             db, destination_row, destination_col, affected_wheelstack_object_id,
             db_name=DB_PMK_NAME, db_collection=CLN_GRID,
         )
-        print('gridPlacementResult', result)
+        # print('gridPlacementResult', result)
     source = order_data['source']['type']
     source_row, source_col = order_data['source']['identifier'].split(',')
     # Delete wheelstack
@@ -33,7 +33,7 @@ async def orders_complete_whole_wheelstack_move(db: AsyncIOMotorClient, order_da
             db, source_row, source_col,
             None, db_name=DB_PMK_NAME, db_collection=CLN_BASE_PLACEMENT,
         )
-        print('basePlatformResult', result)
+        # print('basePlatformResult', result)
     # Unblock everything
     await orders_cancel_unblock_wheelstack(
         db, affected_wheelstack_object_id,
@@ -108,9 +108,6 @@ async def orders_unblock_placement(
         db_name: str = 'pmkScreen'
 ):
     try:
-        print('test\n\n')
-        print(row, column)
-        print(db_collection, preset)
         collection = db[db_name][db_collection]
         projection = {f'rows.{row}.columns.{column}.blocked': False}
         resp = await collection.update_one({'preset': preset}, {'$set': projection})
