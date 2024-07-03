@@ -12,10 +12,13 @@ async def get_all_orders_make_json_friendly(order_data: dict):
         order_data['affectedWheelStacks'][wheel_stack] = str(order_data['affectedWheelStacks'][wheel_stack])
     order_data['createdAt'] = order_data['createdAt'].isoformat()
     order_data['lastUpdated'] = order_data['lastUpdated'].isoformat()
+    if 'completedAt' in order_data:
+        order_data['completedAt'] = order_data['completedAt'].isoformat()
     return order_data
 
 
-async def db_get_all_active_orders(
+# Change them to 1 method, but later.
+async def db_get_all_orders(
         db: AsyncIOMotorClient,
         db_name: str = 'pmkScreen',
         db_collection: str = 'activeOrders',
