@@ -13,5 +13,5 @@ class OrderStandardResponse(BaseModel):
     def set_create_message(self, order_id: str):
         self.message = f"Order created successfully with ID {order_id}"
 
-    def set_get_all_message(self):
-        self.message = 'All active orders presented in DB'
+    def set_get_all_message(self, collection):
+        self.message = f'All {collection} orders presented in DB'
