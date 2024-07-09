@@ -34,6 +34,11 @@ async def orders_complete_whole_wheelstack_move(db: AsyncIOMotorClient, order_da
             None, db_name=DB_PMK_NAME, db_collection=CLN_BASE_PLACEMENT,
         )
         # print('basePlatformResult', result)
+    elif source == CLN_GRID:
+        result = await put_wheelstack_in_grid(
+            db, source_row, source_col,
+            None, db_name=DB_PMK_NAME, db_collection=CLN_GRID,
+        )
     # Unblock everything
     await orders_cancel_unblock_wheelstack(
         db, affected_wheelstack_object_id,
