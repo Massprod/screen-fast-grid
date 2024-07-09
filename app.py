@@ -10,6 +10,7 @@ from routers.grid.router import router as grid_router
 from routers.base_platform.router import router as platform_router
 from routers.orders.router import router as orders_router
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 
 
 load_dotenv('.env')
@@ -25,10 +26,18 @@ logger.add(
 )
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await create_basic_grid()
+    yield
+    await close_db()
+
+
 app = FastAPI(
     title='Back Screen',
     version='0.0.1',
     description='Back part of the screen app',
+    lifespan=lifespan,
 )
 origins = [
     "http://127.0.0.1:5500",
@@ -51,7 +60,7 @@ app.include_router(platform_router, prefix='/platform', tags=['platform'])
 app.include_router(orders_router, prefix='/orders', tags=['orders'])
 
 
-@app.on_event('startup')
+# @app.on_event('startup')
 async def create_basic_grid():
     # Creating all `grid` DB, and it's essential collections.
     # All of these collections are going to be used for populating.
@@ -73,6 +82,6 @@ async def create_basic_grid():
     await empty_grid_conf.create_base_placement_db(mongo_client.get_client(), base_preset_rows, base_preset_rows_data)
 
 
-@app.on_event('shutdown')
+# @app.on_event('shutdown')
 async def close_db():
     mongo_client.close_client()
