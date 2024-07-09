@@ -28,7 +28,7 @@ async def put_wheelstack_in_grid(
         db: AsyncIOMotorClient,
         row: str,
         column: str,
-        wheelstack_object_id: ObjectId,
+        wheelstack_object_id: ObjectId | None,
         db_name: str = 'pmkScreen',
         db_collection: str = 'grid',
 ):
