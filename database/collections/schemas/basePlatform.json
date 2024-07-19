@@ -1,14 +1,18 @@
 {
   "bsonType": "object",
-  "required": ["preset", "createdAt", "lastChange", "rowsOrder", "rows"],
+  "required": ["preset", "name", "createdAt", "lastChange", "rowsOrder", "rows"],
   "properties": {
     "_id": {
       "bsonType": "objectId",
       "description": "must be an objectId and is required"
     },
     "preset": {
-      "bsonType": "string",
+      "bsonType": "objectId",
       "description": "must be a string and is required"
+    },
+    "name": {
+      "bsonType": "string",
+      "description": "unique name of the `basePlatform`, required"
     },
     "createdAt": {
       "bsonType": "date",
@@ -44,19 +48,15 @@
             "bsonType": "object",
             "additionalProperties": {
               "bsonType": "object",
-              "required": ["wheelStack", "whiteSpace"],
+              "required": ["wheelStack", "blocked"],
               "properties": {
                 "wheelStack": {
                   "bsonType": ["objectId", "null"],
-                  "description": "must be an objectId"
-                },
-                "whiteSpace": {
-                  "bsonType": "bool",
-                  "description": "mark of the whitespace on Grid, show or not <div>"
+                  "description": "must be an `objectId`, or null if cell is empty"
                 },
                 "blocked": {
                   "bsonType": "bool",
-                  "description": "Blocked for order placement == we can't use it or not"
+                  "description": "Currently cell is `blocked` for order placement"
                 }
               }
             }
@@ -66,7 +66,7 @@
     }
   },
   "indexes": [
-    { "keys": { "preset": 1 }, "options": { "unique": true, "name": "preset_unique_index" } },
+    { "keys" : { "name":  1}, "options" : { "unique": true, "name" : "unique name of the document"} },
     { "keys": { "createdAt": -1 }, "options": { "name": "createdAt_desc_index" } },
     { "keys": { "lastChange": -1 }, "options": { "name": "lastChange_desc_index" } }
   ]

@@ -4,29 +4,29 @@
   "properties": {
     "_id": {
       "bsonType": "objectId",
-      "description": "must be an objectId and is required"
+      "description": "must be an objectId and its required"
     },
     "wheelId": {
       "bsonType": "string",
-      "description": "must be a string and is required"
+      "description": "must be a string and its required"
     },
     "batchNumber": {
       "bsonType": "string",
-      "description": "must be a string and is required"
+      "description": "must be a string and its required"
     },
     "wheelDiameter": {
       "bsonType": "int",
-      "description": "must be an integer and is required, diameter of the wheel in mm",
+      "description": "must be an integer and its required, diameter of the wheel in mm",
       "minimum": 1,
       "maximum": 100000
     },
     "receiptDate": {
       "bsonType": "date",
-      "description": "must be a date and is required"
+      "description": "must be a date and its required"
     },
     "status": {
       "bsonType": "string",
-      "enum": ["laboratory", "shipped", "orderQue", "grid", "basePlatform"],
+      "enum": ["laboratory", "shipped", "grid", "basePlatform", "rejected"],
       "description": "must be a string and is required"
     },
     "wheelStack": {
@@ -39,7 +39,7 @@
         },
         "wheelStackPosition": {
           "bsonType": "int",
-          "description": "indicates position of the Wheel in the containig it Wheelstack",
+          "description": "indicates position of the Wheel in the Wheelstack",
           "minimum": 0
         }
       }

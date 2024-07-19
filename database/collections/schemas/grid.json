@@ -1,14 +1,18 @@
 {
   "bsonType": "object",
-  "required": ["preset", "createdAt", "lastChange", "rowsOrder", "rows"],
+  "required": ["preset", "name", "createdAt", "lastChange", "rowsOrder", "rows", "extra"],
   "properties": {
     "_id": {
       "bsonType": "objectId",
       "description": "must be an objectId and is required"
     },
     "preset": {
-      "bsonType": "string",
+      "bsonType": "objectId",
       "description": "must be a string and is required"
+    },
+    "name" : {
+      "bsonType": "string",
+      "description": "unique name of the `grid`, required"
     },
     "createdAt": {
       "bsonType": "date",
@@ -44,29 +48,54 @@
             "bsonType": "object",
             "additionalProperties": {
               "bsonType": "object",
-              "required": ["wheelStack", "whiteSpace"],
+              "required": ["wheelStack", "blocked"],
               "properties": {
                 "wheelStack": {
                   "bsonType": ["objectId", "null"],
-                  "description": "must be an objectId"
-                },
-                "whiteSpace": {
-                  "bsonType": "bool",
-                  "description": "mark of the whitespace on Grid, show or not <div>"
+                  "description": "must be an `objectId`, or null if cell is empty"
                 },
                 "blocked": {
                   "bsonType": "bool",
-                  "description": "Blocked for order placement"
+                  "description": "Currently cell is `blocked` for order placement"
                 }
               }
             }
           }
         }
       }
+    },
+    "extra": {
+      "bsonType": "object",
+      "additionalProperties": {
+        "bsonType": "object",
+        "required": ["orders", "blocked", "type", "id"],
+        "properties": {
+          "orders": {
+            "bsonType": "object",
+            "additionalProperties": {
+              "bsonType": "objectId",
+              "description": "`objectId` of the order placed on this element"
+            },
+            "description": "Dictionary of all present orders on this element"
+          },
+          "blocked": {
+            "bsonType": "bool",
+            "description": "Currently element is `blocked` or not for placement"
+          },
+          "type": {
+            "bsonType": "string",
+            "description": "Type of the extra element"
+          },
+          "id": {
+            "bsonType": "string",
+            "description": "`id` of the extra element"
+          }
+        }
+      }
     }
   },
   "indexes": [
-    { "keys": { "preset": 1 }, "options": { "unique": true, "name": "preset_unique_index" } },
+    { "keys" : { "name":  1}, "options" : { "unique": true, "name" : "unique name of the document"} },
     { "keys": { "createdAt": -1 }, "options": { "name": "createdAt_desc_index" } },
     { "keys": { "lastChange": -1 }, "options": { "name": "lastChange_desc_index" } }
   ]

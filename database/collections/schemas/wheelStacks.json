@@ -28,9 +28,19 @@
       "description": "batch number of the WheelStack, we can't have wheels with different batchNumbers inside the one Wheelstack"
     },
     "placement": {
-      "bsonType": "string",
-      "enum": ["grid", "base"],
-      "description": "base placement and wait for movement, or in grid itself"
+      "bsonType": "object",
+      "required": ["type", "placementId"],
+      "properties": {
+        "type": {
+          "bsonType": "string",
+          "enum": ["grid", "basePlatform"],
+          "description": "Destination type (`grid`, `basePlatform`, or `laboratory`), to where we're moving it"
+        },
+        "placementId": {
+          "bsonType": "objectId",
+          "description": "objectId of the placement (we can have multiple `grid`s `basePlatform`s with the same `preset`)"
+        }
+      }
     },
     "rowPlacement": {
       "bsonType": "string",
@@ -50,7 +60,7 @@
     },
     "lastOrder": {
       "bsonType": ["objectId", "null"],
-      "description": "`objectId` of the order, of `null` if no orders placed"
+      "description": "`objectId` of the placed order, of `null` if no orders were ever placed"
     },
     "maxSize": {
       "bsonType": "int",
@@ -66,14 +76,15 @@
       "bsonType": "array",
       "items": {
         "bsonType": "string",
-        "description": "must be an `wheelId` of the placed `wheel`, not the `objectId`"
+        "description": "must be an `wheelId` of the placed `wheel`s"
       },
-      "description": "must be an array of objectIds of the placed `wheel`s and is required",
-      "minItems": 0
+      "description": "must be an array of `objectIds` of the placed `wheel`s and is required",
+      "minItems": 0,
+      "maxItems": 6
     },
     "status": {
       "bsonType": "string",
-      "enum": ["orderQue", "shipped", "inActive"] ,
+      "enum": ["laboratory", "shipped", "grid", "basePlatform", "rejected"],
       "description": "must be a string and is required"
     }
   },

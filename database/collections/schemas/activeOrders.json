@@ -1,7 +1,7 @@
 {
   "bsonType": "object",
   "required": ["createdAt", "orderName", "affectedWheelStacks", "affectedWheels",
-    "orderDescription", "source", "destination", "orderType", "status", "completedAt", "lastUpdated"],
+    "orderDescription", "source", "destination", "orderType", "status", "lastUpdated"],
   "properties": {
     "_id": {
       "bsonType": "objectId",
@@ -23,17 +23,18 @@
       "bsonType": "date",
       "description": "Timestamp for the last update to the order"
     },
-    "completedAt": {
-      "bsonType": "date",
-      "description": "Timestamp for when the order was completed"
-    },
     "source": {
       "bsonType": "object",
-      "required": ["type", "identifier"],
+      "required": ["type", "placementId", "identifier"],
       "properties": {
         "type": {
           "bsonType": "string",
-          "description": "Source type (grid or basePlacement), from where we're taking it"
+          "enum": ["grid", "basePlatform"],
+          "description": "Source type (`grid` or `basePlatform`), from where we're taking it"
+        },
+        "placementId": {
+          "bsonType": "objectId",
+          "description": "objectId of the placement (we can have multiple `grid`s `basePlatform`s with the same `preset`)"
         },
         "identifier": {
           "bsonType": "string",
@@ -43,21 +44,26 @@
     },
     "destination": {
       "bsonType": "object",
-      "required": ["type", "identifier"],
+      "required": ["type", "placementId","identifier"],
       "properties": {
         "type": {
           "bsonType": "string",
-          "description": "Destination type (grid, basePlacement, or laboratory), to where we're moving it"
+          "enum": ["grid", "basePlatform", "laboratory"],
+          "description": "Destination type (`grid`, `basePlatform`, or `laboratory`), to where we're moving it"
+        },
+        "placementId": {
+          "bsonType": "objectId",
+          "description": "objectId of the placement (we can have multiple `grid`s `basePlatform`s with the same `preset`)"
         },
         "identifier": {
           "bsonType": "string",
-          "description": "Identifier for the destination, row and column placement of the wheel stack in `type`"
+          "description": "Identifier for the destination, row and column placement of the wheelstack"
         }
       }
     },
     "orderType": {
       "bsonType": "string",
-      "enum": ["moveWholeStack", "moveTopWheel", "moveToLaboratory", "mergeWheelStack"],
+      "enum": ["moveWholeStack", "moveTopWheel", "moveToLaboratory", "mergeWheelStacks"],
       "description": "Type of operation (moveWholeStack, moveTopWheel, moveToLaboratory, mergeWheelStack)"
     },
     "affectedWheelStacks": {
@@ -65,12 +71,12 @@
       "required": ["source", "destination"],
       "properties": {
         "source": {
-          "bsonType": ["null", "objectId"],
-          "description": "`objectId` of the wheelstack placed at the source cell"
+          "bsonType": ["objectId"],
+          "description": "`objectId` of the wheelstack currently placed on the source cell, source cell can't be empty"
         },
         "destination": {
           "bsonType": ["null","objectId"],
-          "description": "`objectId` of the wheelstack placed at the destination cell"
+          "description": "`objectId` of the wheelStack currently placed on the destination cell, destination cell can be empty"
         }
       }
     },
@@ -81,23 +87,23 @@
         "source": {
           "bsonType": "array",
           "items": {
-            "bsonType": "string",
-            "description": "`wheelId`'s of the wheels placed at the source cell"
+            "bsonType": "objectId",
+            "description": "`objectId`'s of the wheels stored in affected wheelStack on the source cell"
           }
         },
         "destination": {
           "bsonType": "array",
           "items": {
-            "bsonType": "string",
-            "description": "`wheelId`'s of the wheels placed at the destination cell"
+            "bsonType": "objectId",
+            "description": "`objectId`'s of the wheels stored in affected wheelStack on the destination cell"
+            }
           }
         }
-      }
     },
     "status": {
       "bsonType": "string",
-      "enum": ["completed"],
-      "description": "Final status of the order"
+      "enum": ["pending", "inProgress"],
+      "description": "Current status of the order"
     }
   },
   "indexes": [
@@ -105,8 +111,9 @@
   { "keys": { "orderType": 1, "createdAt": -1 }, "options": { "name": "orderType_createdAt_index" } },
   { "keys": { "lastUpdated": -1 }, "options": { "name": "lastUpdated_desc_index" } },
   { "keys": { "orderName": 1 }, "options": { "name": "orderName_index" } },
-  { "keys": { "completedAt": -1 }, "options": { "name": "completedAt_desc_index" } },
-  { "keys": { "orderType": 1, "completedAt": -1 }, "options": { "name": "orderType_completedAt_index" } },
-  { "keys": { "orderType": 1, "lastUpdated": -1 }, "options": { "name": "orderType_lastUpdated_index" } }
+  { "keys": { "orderType": 1, "status": 1 }, "options": { "name": "orderType_status_index" } },
+  { "keys": { "orderType": 1, "status": 1, "createdAt": -1 }, "options": { "name": "orderType_status_createdAt_index" } },
+  { "keys": { "orderType": 1, "lastUpdated": -1 }, "options": { "name": "orderType_lastUpdated_index" } },
+  { "keys": { "status": 1, "createdAt": -1 }, "options": { "name": "status_createdAt_index" } }
 ]
 }
