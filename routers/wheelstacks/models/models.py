@@ -1,18 +1,33 @@
 from enum import Enum
-from typing import Optional, List
-from datetime import datetime, timezone
-from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import Optional
+from pydantic import BaseModel, Field, conlist
+from constants import (PS_BASE_PLATFORM, PS_GRID,
+                       PS_SHIPPED, PS_LABORATORY,
+                       PS_REJECTED, PRES_TYPE_GRID,
+                       PRES_TYPE_PLATFORM, WS_MAX_WHEELS, WS_MIN_WHEELS)
 
 
 class WheelStackStatus(str, Enum):
-    orderQue = 'orderQue'  # Waiting for order to be executed
-    shipped = 'shipped'  # Moved from the grid (removed)
-    inActive = 'inActive'  # Exist 0)
+    basePlatform = PS_BASE_PLATFORM
+    grid = PS_GRID
+    shipped = PS_SHIPPED
+    laboratory = PS_LABORATORY
+    rejected = PS_REJECTED
 
 
-class WheelStackPlacement(str, Enum):
-    grid = 'grid'  # Positioned in the grid
-    base = 'base'  # Positioned in the basePlatform
+# We should only allow creation on the `basePlatform`
+class CreatePlacement(str, Enum):
+    basePlatform = PRES_TYPE_PLATFORM
+
+
+# We should only allow moving them from `basePlatform` -> `grid`.
+class AllowedPlacement(str, Enum):
+    grid = PRES_TYPE_GRID
+    basePlatform = PRES_TYPE_PLATFORM
+
+
+# def create_enum_with_empty_placeholder(name, values):
+#     return Enum(name, {value: value for value in values})
 
 
 class CreateWheelStackRequest(BaseModel):
@@ -21,12 +36,17 @@ class CreateWheelStackRequest(BaseModel):
     batchNumber: str = Field(...,
                              description="batch number of the WheelStack, we can't have wheels with different "
                                          "batchNumbers inside the one Wheelstack")
-    placement: WheelStackPlacement = Field(...,
-                                           description='Current placement of this `wheelStack`')
+    placementType: CreatePlacement = Field(...,
+                                           description='Type of the placement we want it to place into:'
+                                                       'only `basePlatform` allowed')
+    placementId: str = Field(...,
+                             description='`objectId` of the `basePlatform` on which we want to place it')
     rowPlacement: str = Field(...,
-                              description='Current identifier of the `row` this `wheelStack` is placed')
+                              description='Current identifier of the `row` this `wheelStack` '
+                                          'is placed')
     colPlacement: str = Field(...,
-                              description='Current identifier of the `column` this `wheelStack` is placed')
+                              description='Current identifier of the `column` this '
+                                          '`wheelStack` is placed')
     # createdAt: datetime = Field(...,
     #                             description='`datetime` timestamp of creation, in this DB')
     # lastChange: datetime = Field(...,
@@ -35,8 +55,8 @@ class CreateWheelStackRequest(BaseModel):
                                      description='`orderId` id of the last order executed on this `wheelStack`')
     maxSize: int = Field(...,
                          description='Maximum amount of wheels available for placement in this `wheelStack`',
-                         ge=1,
-                         lt=7,
+                         ge=WS_MIN_WHEELS + 1,
+                         lt=WS_MAX_WHEELS + 1,
                          )
 
     blocked: bool = Field(...,
@@ -44,16 +64,20 @@ class CreateWheelStackRequest(BaseModel):
                                       " for now we're just blocking both `wheelStack`'s until order is done."
                                       " So it's a mark of availability of this `wheelStack`"
                                       "  if it's blocked we shouldn't be able to do anything with it.")
-    wheels: List[str] = Field(default_factory=list,
-                              description="list with all the `wheel`'s place in this `wheelStack`."
-                                          " We're using array because we should be able to easily maintain order."
-                                          " And our wheels placed like 0 -> 5 - indexes, from bottom -> top.")
+    wheels: conlist(str, min_length=0, max_length=7) = Field(
+        default_factory=list,
+        description="list with all the `wheel`'s placed in this `wheelStack`."
+                    " We're using array because we should be able to easily maintain order."
+                    " And our wheels placed like 0 -> 5 - indexes, from bottom -> top.",
+    )
     status: WheelStackStatus = Field(...,
-                                     description="Status of the `wheelStack`."
-                                                 "`orderQue` - waiting for order to be executed,"
-                                                 "`shipped` - moved from the grid (removed),"
-                                                 "`grid` - currently positioned in our grid,"
-                                                 "`basePlatform` - currently positioned on platform (before grid)")
+                                     description=f"Current placement.\n"
+                                                 f"`{PS_LABORATORY}` - in the laboratory\n"
+                                                 f"`{PS_SHIPPED}` - completed product\n"
+                                                 f"`{PS_GRID}` - currently positioned in our grid\n"
+                                                 f"`{PS_BASE_PLATFORM}` - currently positioned on platform (before "
+                                                 "grid)\n"
+                                                 f"`{PS_REJECTED}` - marked as rejected and removed")
 
     # @field_validator('createdAt', 'lastChange')
     # def validate_date(cls, date: datetime):
@@ -76,7 +100,8 @@ class CreateWheelStackRequest(BaseModel):
             "example": {
                 "originalPisId": "PIS12345",
                 "batchNumber": "batch12345",
-                "placement": "base",
+                "placementType": PRES_TYPE_PLATFORM,
+                "placementId": '',
                 "rowPlacement": "A",
                 "colPlacement": "1",
                 # "createdAt": "2023-05-01T00:00:00Z",
@@ -85,50 +110,70 @@ class CreateWheelStackRequest(BaseModel):
                 "maxSize": 6,
                 "blocked": False,
                 "wheels": [],
-                "status": "inActive"
+                "status": PS_BASE_PLATFORM,
             }
         }
+        use_enum_values = True  # using values instead of Names
 
 
-class UpdateWheelStackRequest(BaseModel):
-    # We need A LOT of extra checks, we can have out-of-limits ROWs, COLs.
-    # We can have status set to base, when we get placement for GRID etc...
-    placement: Optional[WheelStackPlacement] = Field(None,
-                                                     description='Current identifier of the `row` this `wheelStack` '
-                                                                 'is placed')
-    rowPlacement: Optional[str] = Field(None,
-                                        description='Current identifier of the `row` this `wheelStack` is placed')
-    colPlacement: Optional[str] = Field(None,
-                                        description='Current identifier of the `column` this `wheelStack` is placed')
-    # lastOrder: Optional[str] = Field(None,
-    #                                  description='`orderId` id of the last order executed on this `wheelStack`')
-    blocked: Optional[bool] = Field(None,
-                                    description="Anytime order placed on this `wheelStack` to move or merge or "
-                                                "anything else,"
-                                                " for now we're just blocking both `wheelStack`'s until order is done."
-                                                " So it's a mark of availability of this `wheelStack`"
-                                                "  if it's blocked we shouldn't be able to do anything with it.")
-    wheels: Optional[List[str]] = Field(default_factory=list,
-                                        description="list with all the `wheel`'s place in this `wheelStack`."
-                                                    "We're using array because we should be able to easily maintain "
-                                                    "order."
-                                                    " And our wheels placed like 0 -> 5 - indexes, from bottom -> top.")
-    status: Optional[WheelStackStatus] = Field(None,
-                                               description="Status of the `wheelStack`."
-                                                           "`orderQue` - waiting for order to be executed,"
-                                                           "`shipped` - moved from the grid (removed),"
-                                                           "`grid` - currently positioned in our grid,"
-                                                           "`basePlatform` - currently positioned on platform (before "
-                                                           "grid)")
+class ForceUpdateWheelStackRequest(BaseModel):
+    originalPisId: str = Field(...,
+                               description='original id from `pis` system')
+    batchNumber: str = Field(...,
+                             description='`batchNumber` of the wheels inside')
+    placementType: AllowedPlacement = Field(None,
+                                            description='Type of the placement we want it to place into:'
+                                                        'only `grid` and `basePlatform` allowed')
+    placementId: str = Field(...,
+                             description='`objectId` of the placement on which we want to place it')
+    rowPlacement: str = Field(...,
+                              description='Desired `row` of the cell in which this should be placed')
+    colPlacement: str = Field(None,
+                              description='Desired `col` of the cell in which this should be placed')
+    lastOrder: Optional[str | None] = Field(None,
+                                            description='`orderId` id of the last order executed on this `wheelStack`')
+    maxSize: int = Field(...,
+                         description='Maximum amount of wheels available for placement in this `wheelStack`',
+                         ge=WS_MIN_WHEELS + 1,
+                         lt=WS_MAX_WHEELS + 1,
+                         )
+    blocked: bool = Field(False,
+                          description="Anytime order placed on this `wheelStack` to move or merge or "
+                                      "anything else,"
+                                      " for now we're just blocking both `wheelStack`'s until order is done."
+                                      " So it's a mark of availability of this `wheelStack`"
+                                      "  if it's blocked we shouldn't be able to do anything with it.")
+    wheels: conlist(
+        str,
+        min_length=WS_MIN_WHEELS + 1,
+        max_length=WS_MAX_WHEELS
+    ) = Field(default_factory=list,
+              description="list with all the `wheel`'s placed in this `wheelStack`."
+                          " We're using array because we should be able to easily maintain order."
+                          " And our wheels placed like 0 -> 5 - indexes, from bottom -> top.")
+    status: WheelStackStatus = Field(...,
+                                     description=f"Current placement.\n"
+                                                 f"`{PS_LABORATORY}` - in the laboratory\n"
+                                                 f"`{PS_SHIPPED}` - completed product\n"
+                                                 f"`{PS_GRID}` - currently positioned in our grid\n"
+                                                 f"`{PS_BASE_PLATFORM}` - currently positioned on platform (before "
+                                                 "grid)\n"
+                                                 f"`{PS_REJECTED}` - marked as rejected and removed")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "placement": "grid",
-                "rowPlacement": "B",
-                "colPlacement": "3",
+                "originalPisId": "no_limit",
+                "batchNumber": "no_limit",
+                "placementType": "grid",
+                "placementId": '6699f225c41ba1feabc771c2',
+                "rowPlacement": "no_limit",
+                "colPlacement": "no_limit",
+                "lastOrder": None,
+                "maxSize": 6,
                 "blocked": False,
-                "wheels": [],
-                "status": "inActive"
+                "wheels": ["no_limit", "no_limit", "no_limit"],
+                "status": PS_BASE_PLATFORM,
             }
         }
+        use_enum_values = True  # using values instead of Name

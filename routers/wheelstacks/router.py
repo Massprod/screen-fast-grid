@@ -2,123 +2,218 @@ from fastapi import APIRouter, Depends, HTTPException, status, Path, Body
 from fastapi.responses import JSONResponse, Response
 from database.mongo_connection import mongo_client
 from motor.motor_asyncio import AsyncIOMotorClient
-from loguru import logger
-from .models.models import CreateWheelStackRequest, UpdateWheelStackRequest
-from .models.response_models import WheelsStackStandardResponse
-from .crud import (db_insert_wheelstack, db_delete_wheelstack, wheelstacks_make_json_friendly,
-                   db_update_wheelstack, db_find_wheelstack, db_find_wheelstack_by_pis)
-from bson.errors import InvalidId
+from .models.models import CreateWheelStackRequest, ForceUpdateWheelStackRequest
+from .crud import (db_find_all_wheelstacks, db_insert_wheelstack,
+                   db_delete_wheelstack, wheelstack_make_json_friendly,
+                   all_make_json_friendly, db_update_wheelstack,
+                   db_find_wheelstack_by_object_id, db_find_wheelstack_by_pis)
 from bson import ObjectId
+from utility.utilities import get_object_id, time_w_timezone
+from constants import DB_PMK_NAME, CLN_WHEELSTACKS, CLN_BASE_PLATFORM
+from routers.base_platform.crud import cell_exist, place_wheelstack_in_platform, get_platform_by_object_id
 
 
 router = APIRouter()
 
 
+# TODO: Currently, we don't need to search by anything except `objectId`.
+#  but it still good to add some options, to search by `originalPisId` or `row|col` placement etc.
+#  Maybe add these after first correct version.
+#  Or if it's needed.
+
+
 @router.post(
     path='/',
-    description='Create New Wheelstack',
+    description='Create and place a new `wheelStack` in the chosen `basePlatform`',
     status_code=status.HTTP_201_CREATED,
-    response_description='The details of the newly created wheelstack',
-    response_model=WheelsStackStandardResponse,
+    response_description='`objectId` of the created wheelstack',
+    response_class=JSONResponse,
     # responses={},  # add examples
+    name='Create Wheelstack'
 )
-async def create_wheelstack(
-        wheel_stack: CreateWheelStackRequest = Body(
+async def route_create_wheelstack(
+        wheelstack: CreateWheelStackRequest = Body(
             ...,
             description="Every parameter of the `wheelStack` is mandatory,"
                         " except the `lastChange`. Because this `wheelStack` might be never changed.",
         ),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
 ):
-    wheel_stack_data = wheel_stack.dict()
-    resp = WheelsStackStandardResponse()
-    status_code = status.HTTP_201_CREATED
-    original_pis_id = wheel_stack_data['originalPisId']
-    duplicate = await db_find_wheelstack_by_pis(db, original_pis_id)
+    wheelstack_data = wheelstack.model_dump()
+    # +++ Placement exist
+    placement_id: ObjectId = await get_object_id(wheelstack_data['placementId'])
+    platform = await get_platform_by_object_id(placement_id, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
+    if platform is None:
+        raise HTTPException(
+            detail='Incorrect `placementId` it doesnt exist',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    # Placement exist ---
+    original_pis_id = wheelstack_data['originalPisId']
+    # +++ Duplicate
+    duplicate = await db_find_wheelstack_by_pis(original_pis_id, db, DB_PMK_NAME, CLN_WHEELSTACKS)
     if duplicate is not None:
-        status_code = status.HTTP_302_FOUND
-        resp.set_status(status_code)
-        resp.set_pis_duplicate_message(original_pis_id)
-        return JSONResponse(content=resp.dict(), status_code=status_code)
-    # Check if placement in GRID is FREE.
-    # Otherwise, raise 409.
-    result = await db_insert_wheelstack(db, wheel_stack_data)
-    resp.set_status(status_code)
-    resp.set_create_message(result.inserted_id)
-    wheel_stack_data['_id'] = result.inserted_id
-    resp.data = await wheelstacks_make_json_friendly(wheel_stack_data)
-    return JSONResponse(content=resp.dict(), status_code=status_code)
+        return JSONResponse(
+            content={
+                'duplicate': f'`wheelStack` with `originalPisId` = {original_pis_id}. Already exist.'
+            },
+            status_code=status.HTTP_302_FOUND
+        )
+    # Duplicate ---
+    # +++ Placement empty
+    row: str = wheelstack_data['rowPlacement']
+    col: str = wheelstack_data['colPlacement']
+    platform_id: ObjectId = await get_object_id(wheelstack_data['placementId'])
+    placement_data = await cell_exist(platform_id, row, col, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
+    if placement_data is None:
+        raise HTTPException(
+            detail=f'Incorrect placement cell data,'
+                   f' no such cell exist in placement with `objectId` = {str(platform_id)}',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    placement_wheelstack = placement_data['rows'][row]['columns'][col]['wheelStack']
+    if placement_wheelstack is not None:
+        raise HTTPException(
+            detail=f'Placement cell already taken by `wheelStack` with `objectId` = {placement_wheelstack}',
+            status_code=status.HTTP_302_FOUND,
+        )
+    # Placement empty ---
+    # +++ Placement blocked
+    placement_blocked = placement_data['rows'][row]['columns'][col]['blocked']
+    if placement_blocked:
+        raise HTTPException(
+            detail='Placement cell marked as `blocked`. Waiting for order',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    # Placement blocked ---
+    wheelstack_data['placementId'] = placement_id
+    creation_time = await time_w_timezone()
+    correct_data = {
+        'originalPisId': wheelstack_data['originalPisId'],
+        'batchNumber': wheelstack_data['batchNumber'],
+        'placement': {
+            'type': wheelstack_data['placementType'],
+            'placementId': wheelstack_data['placementId'],
+        },
+        'rowPlacement': wheelstack_data['rowPlacement'],
+        'colPlacement': wheelstack_data['colPlacement'],
+        'createdAt': creation_time,
+        'lastChange': creation_time,
+        'lastOrder': None,
+        'maxSize': wheelstack_data['maxSize'],
+        'blocked': False,
+        'wheels': wheelstack_data['wheels'],
+        'status': wheelstack_data['status'],
+    }
+    result = await db_insert_wheelstack(correct_data, db, DB_PMK_NAME, CLN_WHEELSTACKS)
+    created_id: ObjectId = result.inserted_id
+    await place_wheelstack_in_platform(placement_id, created_id, row, col, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
+    return JSONResponse(
+        content={
+            '_id': str(created_id)
+        },
+        status_code=status.HTTP_201_CREATED,
+    )
 
 
 @router.get(
-    path='/{wheelstack_object_id}',
+    path='/id/{wheelstack_object_id}',
     description='Search Created Wheelstack',
     response_description='All the data of searched `wheelStack`',
-    response_model=WheelsStackStandardResponse,
+    response_class=JSONResponse,
+    name='Find Wheelstack',
 )
-async def find_wheelstack(
-        wheelstack_object_id: str = Path(description='`objectId` of stored wheelstack'),
+async def route_find_wheelstack(
+        wheelstack_object_id: str = Path(description='`objectId` of the wheelstack'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client)
 ):
-    status_code = status.HTTP_200_OK
-    # change to a utility function, because it should be used everywhere.
-    try:
-        object_id = ObjectId(wheelstack_object_id)
-    except InvalidId as e:
-        status_code = status.HTTP_400_BAD_REQUEST
-        raise HTTPException(detail=str(e), status_code=status_code)
-    resp = WheelsStackStandardResponse()
-    result = await db_find_wheelstack(db, object_id)
+    wheelstack_id: ObjectId = await get_object_id(wheelstack_object_id)
+    result = await db_find_wheelstack_by_object_id(wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS)
     if result is None:
-        status_code = status.HTTP_404_NOT_FOUND
-        resp.set_duplicate_message(wheelstack_object_id)
-        raise HTTPException(detail=resp.dict(), status_code=status_code)
-    resp.set_status(status_code)
-    resp.set_found_message(wheelstack_object_id)
-    resp.data = await wheelstacks_make_json_friendly(result)
-    return JSONResponse(content=resp.dict(), status_code=status_code)
+        raise HTTPException(
+            detail=f'`wheelStack` with `objectId` = {wheelstack_object_id}. Not Found.',
+            status_code=status.HTTP_404_NOT_FOUND
+        )
+    result = await wheelstack_make_json_friendly(result)
+    return JSONResponse(
+        content=result,
+        status_code=status.HTTP_200_OK,
+    )
 
 
 @router.put(
     path='/{wheelstack_object_id}',
-    description='Update Created Wheelstack',
-    response_description='Simple 200 or 404',
+    description=" `WARNING` "
+                "\nCompletely free way of updating Wheelstack,"
+                " that's why it crucial to use it with caution."
+                "\nBecause it should be used only for the First time filling process."
+                "\nIt doesn't take any effects on actual placement of the `wheelStack`s in DB."
+                "\nIt's only changes `wheelStack` record in DB, no dependencies with anything.",
+    name='Force Update',
 )
-async def update_wheelstack(
-        wheelstack_new_data: UpdateWheelStackRequest,
+async def route_force_update_wheelstack(
+        wheelstack_new_data: ForceUpdateWheelStackRequest,
         wheelstack_object_id: str = Path(description='`objectId` of stored wheelstack'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client)
 ):
-    status_code = status.HTTP_200_OK
-    try:
-        object_id = ObjectId(wheelstack_object_id)
-    except InvalidId as e:
-        status_code = status.HTTP_400_BAD_REQUEST
-        raise HTTPException(detail=str(e), status_code=status_code)
-    result = await db_update_wheelstack(db, object_id, wheelstack_new_data.dict())
+    new_data = wheelstack_new_data.model_dump()
+    wheelstack_id = await get_object_id(wheelstack_object_id)
+    wheelstack_exist = await db_find_wheelstack_by_object_id(wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS)
+    if wheelstack_exist is None:
+        raise HTTPException(
+            detail=f'`wheelStack` with `objectId` = {wheelstack_object_id}. Not Found.',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    force_data = {
+        'originalPisId': new_data['originalPisId'],
+        'batchNumber': new_data['batchNumber'],
+        'placement': {
+            'type': new_data['placementType'],
+            'placementId': await get_object_id(new_data['placementId']),
+        },
+        'rowPlacement': new_data['rowPlacement'],
+        'colPlacement': new_data['colPlacement'],
+        'lastChange': await time_w_timezone(),
+        'lastOrder': new_data['lastOrder'],
+        'blocked': new_data['blocked'],
+        'wheels': new_data['wheels'],
+        'status': new_data['status'],
+    }
+    result = await db_update_wheelstack(force_data, wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS)
     if 0 == result.modified_count:
-        status_code = status.HTTP_404_NOT_FOUND
-        raise HTTPException(detail='Not found', status_code=status_code)
-    return Response(status_code=status_code)
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED)
+    return Response(status_code=status.HTTP_200_OK)
 
 
 @router.delete(
     path='/{wheelstack_object_id}',
-    description='Delete Created Wheelstack',
-    response_description='Simple 200 or 404'
+    description='`WARNING`'
+                '\nDeletion of the `wheelStack` without dependencies.'
+                '\nOnly deletes record of provided `objectId` from a collection.',
+    name='Force Delete',
 )
-async def delete_wheelstack(
+async def route_force_delete_wheelstack(
         wheelstack_object_id: str = Path(description='`objectId` of a stored wheelstack'),
-        db: AsyncIOMotorClient = Depends(mongo_client.depend_client)
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
 ):
-    status_code = status.HTTP_200_OK
-    try:
-        object_id = ObjectId(wheelstack_object_id)
-    except InvalidId as e:
-        status_code = status.HTTP_400_BAD_REQUEST
-        raise HTTPException(detail=str(e), status_code=status_code)
-    result = await db_delete_wheelstack(db, object_id)
+    wheelstack_id: ObjectId = await get_object_id(wheelstack_object_id)
+    result = await db_delete_wheelstack(wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS)
     if 0 == result.deleted_count:
-        status_code = status.HTTP_404_NOT_FOUND
-        return Response(status_code=status_code)
-    return Response(status_code=status_code)
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED)
+    return Response(status_code=status.HTTP_200_OK)
+
+
+@router.get(
+    path='/all',
+    description='Getting all of the `wheelStack`s present in DB',
+    name='Get All',
+)
+async def route_get_all_wheelstacks(
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+):
+    data = await db_find_all_wheelstacks(db, DB_PMK_NAME, CLN_WHEELSTACKS)
+    resp = await all_make_json_friendly(data)
+    return JSONResponse(
+        content=resp,
+        status_code=status.HTTP_200_OK,
+    )
