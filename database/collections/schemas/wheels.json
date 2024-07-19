@@ -40,7 +40,8 @@
         "wheelStackPosition": {
           "bsonType": "int",
           "description": "indicates position of the Wheel in the Wheelstack",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 6
         }
       }
     }
