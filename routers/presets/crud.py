@@ -26,15 +26,22 @@ async def get_all_presets(
         db_collection: str,
 ):
     collection = await get_db_collection(db, db_name, db_collection)
-    presets = await collection.find(
-        {},
-        {
-            'rowsOrder': 0,
-            'rows': 0,
-            'extra': 0,
-        }
-    ).to_list(length=None)
-    return presets
+    try:
+        presets = await collection.find(
+            {},
+            {
+                'rowsOrder': 0,
+                'rows': 0,
+                'extra': 0,
+            }
+        ).to_list(length=None)
+        return presets
+    except PyMongoError as error:
+        logger.error(f'Error while searching in DB: {error}')
+        raise HTTPException(
+            detail=f'Error while searching in DB',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 async def get_preset_by_id(
@@ -48,16 +55,23 @@ async def get_preset_by_id(
     logger.info(
         f'Searching for preset with `objectId` = `{str(preset_object_id)}`' + db_log_data
     )
-    preset = await collection.find_one({'_id': preset_object_id})
-    if preset is None:
-        logger.info(
-            f'Preset with `objectId` = `{str(preset_object_id)}`, not Found' + db_log_data
+    try:
+        preset = await collection.find_one({'_id': preset_object_id})
+        if preset is None:
+            logger.info(
+                f'Preset with `objectId` = `{str(preset_object_id)}`, not Found' + db_log_data
+            )
+        else:
+            logger.info(
+                f'Preset with `objectId` = `{str(preset_object_id)}`, Found' + db_log_data
+            )
+        return preset
+    except PyMongoError as error:
+        logger.error(f'Error while searching in DB: {error}')
+        raise HTTPException(
+            detail=f'Error while searching in DB',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
-    else:
-        logger.info(
-            f'Preset with `objectId` = `{str(preset_object_id)}`, Found' + db_log_data
-        )
-    return preset
 
 
 async def get_preset_by_name(
@@ -71,16 +85,23 @@ async def get_preset_by_name(
     logger.info(
         f'Searching for preset with `presetName` = {preset_name}' + db_log_data
     )
-    preset = await collection.find_one({'presetName': preset_name})
-    if preset is None:
-        logger.info(
-            f'Preset with `presetName` = `{preset_name}`, not Found.' + db_log_data
+    try:
+        preset = await collection.find_one({'presetName': preset_name})
+        if preset is None:
+            logger.info(
+                f'Preset with `presetName` = `{preset_name}`, not Found.' + db_log_data
+            )
+        else:
+            logger.info(
+                f'Preset with `presetName` = `{preset_name}`, Found.' + db_log_data
+            )
+        return preset
+    except PyMongoError as error:
+        logger.error(f'Error while searching in DB: {error}')
+        raise HTTPException(
+            detail=f'Error while searching in DB',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
-    else:
-        logger.info(
-            f'Preset with `presetName` = `{preset_name}`, Found.' + db_log_data
-        )
-    return preset
 
 
 async def add_new_preset(
