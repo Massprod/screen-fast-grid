@@ -6,7 +6,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from database.mongo_connection import mongo_client
 from fastapi.responses import JSONResponse, Response
 from fastapi import APIRouter, Depends, HTTPException, status, Path, Body
-from constants import DB_PMK_NAME, CLN_WHEELS, PS_BASE_PLATFORM
+from constants import DB_PMK_NAME, CLN_WHEELS, PS_BASE_PLATFORM, CLN_WHEELSTACKS
 from .models.response_models import (
                                      update_response_examples,
                                      find_response_examples,
@@ -15,6 +15,7 @@ from .crud import (db_insert_wheel, db_find_wheel,
                    db_update_wheel, db_delete_wheel,
                    wheel_make_json_friendly, db_find_wheel_by_object_id,
                    db_get_all_wheels)
+from routers.wheelstacks.crud import db_find_wheelstack_by_object_id, db_update_wheelstack
 
 
 router = APIRouter()
@@ -93,8 +94,8 @@ async def route_find_wheel_by_object_id(
     path='/{wheel_object_id}',
     name='Force Update',
     description="`WARNING`"
-                "\nForce updating of the `wheel` data in DB"
-                "\nNo dependencies will be changed, only `wheel` record itself",
+                "Forcing update without any dependencies."
+                "It should be used, only when we need to change DB record by `Hand`",
     status_code=status.HTTP_200_OK,
     responses={
         status.HTTP_200_OK: update_response_examples[status.HTTP_200_OK],
@@ -133,11 +134,6 @@ async def route_force_update_wheel(
     logger.info(f"Updating wheel with `objectId`: {wheel_id}")
     if 'wheelStack' in wheel_data:
         wheel_data['wheelStack']['wheelStackId'] = await get_object_id(wheel_data['wheelStack']['wheelStackId'])
-        if not 0 <= wheel_data['wheelStack']['wheelStackPosition'] < 7:
-            raise HTTPException(
-                detail=f'Incorrect position. 0 -> 6 (inclusive)',
-                status_code=status.HTTP_400_BAD_REQUEST,
-            )
     result = await db_update_wheel(wheel_id, wheel_data, db, DB_PMK_NAME, CLN_WHEELS)
     if result.modified_count == 0:
         logger.info(f'Wheel with `objectId`: {wheel_id}. Not Modified')
@@ -187,9 +183,38 @@ async def route_create_wheel(
         'receiptDate': wheel_data['receiptDate'],
         'status': wheel_data['status'],
     }
-    if 'wheelStack' in wheel_data:
+    # We only create wheel, either placed in a fresh `wheelStack` or with empty placement.
+    wheelstack_data = None
+    if 'wheelStack' in wheel_data and wheel_data['wheelStack'] is not None:
         wheelstack_id = await get_object_id(wheel_data['wheelStack']['wheelStackId'])
         wheelstack_position = wheel_data['wheelStack']['wheelStackPosition']
+        # So, they should be placed in correct order if we somehow decided to create
+        #  wheels earlier than `wheelStack`.
+        # Correctly, we should create an empty `wheelStack` => create all wheels and place them.
+        wheelstack_data = await db_find_wheelstack_by_object_id(wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS)
+        if wheelstack_data is None:
+            raise HTTPException(
+                detail=f'Given `wheelStack` with `objectId` = {wheelstack_id} doesnt exist. Not Found',
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        current_wheels: list[ObjectId] = wheelstack_data['wheels']
+        if len(current_wheels) == wheelstack_data['maxSize']:
+            raise HTTPException(
+                detail=f'Wheelstack doesnt have empty positions, `maxSize`: {wheelstack_data['maxSize']}',
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
+        # Correct order => place1 -> place2 etc. and we always use position as (last_index + 1)
+        if wheelstack_position != len(current_wheels):
+            raise HTTPException(
+                detail=f'Incorrect `wheelStackPosition` wheels should be placed one after another.'
+                       f'Current # of placed wheels: {len(current_wheels)}',
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        if wheelstack_data['status'] != wheel_data['status']:
+            raise HTTPException(
+                detail=f'Incorrect `status` it should correspond with `wheelStack` status',
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
         cor_data['wheelStack'] = {
             'wheelStackId': wheelstack_id,
             'wheelStackPosition': wheelstack_position,
@@ -198,6 +223,11 @@ async def route_create_wheel(
         cor_data['wheelStack'] = None
     result = await db_insert_wheel(cor_data, db, DB_PMK_NAME, CLN_WHEELS)
     cor_data['_id'] = result.inserted_id
+    if wheelstack_data is not None:
+        wheelstack_data['wheels'].append(result.inserted_id)
+        await db_update_wheelstack(
+            wheelstack_data, wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS
+        )
     cor_data = await wheel_make_json_friendly(cor_data)
     return JSONResponse(
         content=cor_data,
