@@ -48,7 +48,7 @@
             "bsonType": "object",
             "additionalProperties": {
               "bsonType": "object",
-              "required": ["wheelStack", "blocked"],
+              "required": ["wheelStack", "blocked", "blockedBy"],
               "properties": {
                 "wheelStack": {
                   "bsonType": ["objectId", "null"],
@@ -57,6 +57,10 @@
                 "blocked": {
                   "bsonType": "bool",
                   "description": "Currently cell is `blocked` for order placement"
+                },
+                "blockedBy": {
+                  "bsonType": ["objectId", "null"],
+                  "description": "`objectId` of the order which is blocked this cell"
                 }
               }
             }
@@ -97,6 +101,7 @@
   "indexes": [
     { "keys" : { "name":  1}, "options" : { "unique": true, "name" : "unique name of the document"} },
     { "keys": { "createdAt": -1 }, "options": { "name": "createdAt_desc_index" } },
-    { "keys": { "lastChange": -1 }, "options": { "name": "lastChange_desc_index" } }
+    { "keys": { "lastChange": -1 }, "options": { "name": "lastChange_desc_index" } },
+    { "keys": { "rows.columns.blockedBy": 1 }, "options": { "name": "`blockedBy_asc_index" } }
   ]
 }
