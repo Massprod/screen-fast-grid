@@ -21,13 +21,13 @@
     },
     "lastUpdated": {
       "bsonType": "date",
-      "description": "Timestamp for the last update to the order"
+      "description": "Timestamp for the last update of the order"
     },
     "source": {
       "bsonType": "object",
-      "required": ["type", "placementId", "identifier"],
+      "required": ["placementType", "placementId", "rowPlacement", "columnPlacement"],
       "properties": {
-        "type": {
+        "placementType": {
           "bsonType": "string",
           "enum": ["grid", "basePlatform"],
           "description": "Source type (`grid` or `basePlatform`), from where we're taking it"
@@ -36,28 +36,36 @@
           "bsonType": "objectId",
           "description": "objectId of the placement (we can have multiple `grid`s `basePlatform`s with the same `preset`)"
         },
-        "identifier": {
+        "rowPlacement": {
           "bsonType": "string",
-          "description": "Identifier for the source, row and column placement of the wheel stack in `type`"
+          "description": "string identifier for the `row` of a source cell"
+        },
+        "columnPlacement": {
+          "bsonType": "string",
+          "description": "string identifier for the `column` of a source cell"
         }
       }
     },
     "destination": {
       "bsonType": "object",
-      "required": ["type", "placementId","identifier"],
+      "required": ["placementType", "placementId","rowPlacement", "columnPlacement"],
       "properties": {
-        "type": {
+        "placementType": {
           "bsonType": "string",
-          "enum": ["grid", "basePlatform", "laboratory"],
-          "description": "Destination type (`grid`, `basePlatform`, or `laboratory`), to where we're moving it"
+          "enum": ["grid"],
+          "description": "We can move only from `basePlatform` -> `grid` or inside the `grid. Even if we `moveToLaboratory` we still move `wheelStack` to some `extra` element in a `grid` and later it's transitioned to lab"
         },
         "placementId": {
           "bsonType": "objectId",
           "description": "objectId of the placement (we can have multiple `grid`s `basePlatform`s with the same `preset`)"
         },
-        "identifier": {
+        "rowPlacement": {
           "bsonType": "string",
-          "description": "Identifier for the destination, row and column placement of the wheelstack"
+          "description": "string identifier for the `row` of a destination cell"
+        },
+        "columnPlacement": {
+          "bsonType": "string",
+          "description": "string identifier for the `column` of a destination cell"
         }
       }
     },
@@ -102,8 +110,8 @@
     },
     "status": {
       "bsonType": "string",
-      "enum": ["pending", "inProgress"],
-      "description": "Current status of the order"
+      "enum": ["pending"],
+      "description": "Status of the order, in `activeOrder` we can only have `pending` orders"
     }
   },
   "indexes": [
