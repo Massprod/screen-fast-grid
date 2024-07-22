@@ -12,6 +12,9 @@ async def wheelstack_make_json_friendly(wheelstack_data):
     wheelstack_data['placement']['placementId'] = str(wheelstack_data['placement']['placementId'])
     wheelstack_data['createdAt'] = wheelstack_data['createdAt'].isoformat()
     wheelstack_data['lastChange'] = wheelstack_data['lastChange'].isoformat()
+    wheelstack_data['blockedBy'] = str(wheelstack_data['blockedBy'])
+    for index, wheel_id in enumerate(wheelstack_data['wheels']):
+        wheelstack_data['wheels'][index] = str(wheel_id)
     return wheelstack_data
 
 
@@ -24,6 +27,9 @@ async def all_make_json_friendly(wheelstacks_data):
         wheelstack['placement']['placementId'] = str(wheelstack['placement']['placementId'])
         wheelstack['createdAt'] = wheelstack['createdAt'].isoformat()
         wheelstack['lastChange'] = wheelstack['lastChange'].isoformat()
+        wheelstack['blockedBy'] = str(wheelstack['blockedBy'])
+        for index, wheel_id in enumerate(wheelstack['wheels']):
+            wheelstack['wheels'][index] = str(wheel_id)
         all_data[wheelstack_id] = wheelstack
     return all_data
 
