@@ -9,7 +9,8 @@ from .crud import (db_find_all_wheelstacks, db_insert_wheelstack,
                    db_find_wheelstack_by_object_id, db_find_wheelstack_by_pis)
 from bson import ObjectId
 from utility.utilities import get_object_id, time_w_timezone
-from constants import DB_PMK_NAME, CLN_WHEELSTACKS, CLN_BASE_PLATFORM
+from constants import DB_PMK_NAME, CLN_WHEELSTACKS, CLN_BASE_PLATFORM, CLN_WHEELS
+from routers.wheels.crud import db_find_wheel_by_object_id, db_update_wheel
 from routers.base_platform.crud import cell_exist, place_wheelstack_in_platform, get_platform_by_object_id
 
 
@@ -60,6 +61,26 @@ async def route_create_wheelstack(
             status_code=status.HTTP_302_FOUND
         )
     # Duplicate ---
+    # +++ Wheels:
+    # Checking for a correct `objectId` type and `wheel` should already exist,
+    #   and it shouldn't be yet assigned.
+    cor_wheels: list[ObjectId] = []
+    for wheel in wheelstack_data['wheels']:
+        wheel_id: ObjectId = await get_object_id(wheel)
+        exist = await db_find_wheel_by_object_id(wheel_id, db, DB_PMK_NAME, CLN_WHEELS)
+        if exist is None:
+            raise HTTPException(
+                detail=f'`wheel` with given `objectId` = {wheel}. Not Found.',
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        if exist['wheelStack'] is not None:
+            raise HTTPException(
+                detail=f'`wheel` with given `objectId` = {wheel}.'
+                       f' Already Assigned to = {exist['wheelStack']}',
+                status_code=status.HTTP_409_CONFLICT,
+            )
+        cor_wheels.append(wheel_id)
+    # Wheels ---
     # +++ Placement empty
     row: str = wheelstack_data['rowPlacement']
     col: str = wheelstack_data['colPlacement']
@@ -86,14 +107,13 @@ async def route_create_wheelstack(
             status_code=status.HTTP_403_FORBIDDEN,
         )
     # Placement blocked ---
-    wheelstack_data['placementId'] = placement_id
     creation_time = await time_w_timezone()
     correct_data = {
         'originalPisId': wheelstack_data['originalPisId'],
         'batchNumber': wheelstack_data['batchNumber'],
         'placement': {
             'type': wheelstack_data['placementType'],
-            'placementId': wheelstack_data['placementId'],
+            'placementId': placement_id,
         },
         'rowPlacement': wheelstack_data['rowPlacement'],
         'colPlacement': wheelstack_data['colPlacement'],
@@ -102,12 +122,23 @@ async def route_create_wheelstack(
         'lastOrder': None,
         'maxSize': wheelstack_data['maxSize'],
         'blocked': False,
-        'wheels': wheelstack_data['wheels'],
+        'blockedBy': None,
+        'wheels': cor_wheels,
         'status': wheelstack_data['status'],
     }
     result = await db_insert_wheelstack(correct_data, db, DB_PMK_NAME, CLN_WHEELSTACKS)
     created_id: ObjectId = result.inserted_id
     await place_wheelstack_in_platform(placement_id, created_id, row, col, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
+    # +++ Marking Wheels
+    for index, wheel_id in enumerate(cor_wheels):
+        record: dict = {
+            'wheelStack': {
+                'wheelStackId': created_id,
+                'wheelStackPosition': index,
+            }
+        }
+        await db_update_wheel(wheel_id, record, db, DB_PMK_NAME, CLN_WHEELS)
+    # Marking Wheels ---
     return JSONResponse(
         content={
             '_id': str(created_id)
@@ -164,6 +195,11 @@ async def route_force_update_wheelstack(
             detail=f'`wheelStack` with `objectId` = {wheelstack_object_id}. Not Found.',
             status_code=status.HTTP_404_NOT_FOUND,
         )
+    cor_wheels: list[ObjectId] = []
+    # Because it's a forced update, without dependencies, we don't check anything.
+    # Except for correct data_type.
+    for wheel in new_data['wheels']:
+        cor_wheels.append(await get_object_id(wheel))
     force_data = {
         'originalPisId': new_data['originalPisId'],
         'batchNumber': new_data['batchNumber'],
@@ -176,7 +212,8 @@ async def route_force_update_wheelstack(
         'lastChange': await time_w_timezone(),
         'lastOrder': new_data['lastOrder'],
         'blocked': new_data['blocked'],
-        'wheels': new_data['wheels'],
+        'blockedBy': await get_object_id(new_data['blockedBy']),
+        'wheels': cor_wheels,
         'status': new_data['status'],
     }
     result = await db_update_wheelstack(force_data, wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS)
