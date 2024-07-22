@@ -3,7 +3,9 @@ from typing import Optional
 from fastapi import HTTPException, status
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field, field_validator
-from constants import PS_GRID, PS_SHIPPED, PS_REJECTED, PS_LABORATORY, PS_BASE_PLATFORM, WL_MAX_DIAM, WL_MIN_DIAM
+from constants import (PS_GRID, PS_SHIPPED, PS_REJECTED,
+                       PS_LABORATORY, PS_BASE_PLATFORM, WL_MAX_DIAM, WL_MIN_DIAM,
+                       WS_MIN_WHEELS, WS_MAX_WHEELS)
 
 
 class WheelStatus(str, Enum):
@@ -16,7 +18,11 @@ class WheelStatus(str, Enum):
 
 class WheelStackData(BaseModel):
     wheelStackId: str
-    wheelStackPosition: int
+    wheelStackPosition: int = Field(...,
+                                    description='Maximum 6 wheels, 0 -> 6 indexes, inclusive',
+                                    ge=WS_MIN_WHEELS,
+                                    lt=WS_MAX_WHEELS,
+                                    )
 
 
 class CreateWheelRequest(BaseModel):
