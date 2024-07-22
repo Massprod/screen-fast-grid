@@ -3,7 +3,7 @@ from pymongo.errors import PyMongoError
 from fastapi import HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
-from utility.utilities import get_db_collection
+from utility.utilities import get_db_collection, time_w_timezone
 
 
 async def wheelstack_make_json_friendly(wheelstack_data):
@@ -116,6 +116,7 @@ async def db_update_wheelstack(
         db_collection,
 ):
     try:
+        new_data['lastChange'] = await time_w_timezone()
         collection = await get_db_collection(db, db_name, db_collection)
         res = await collection.update_one({'_id': wheelstack_object_id}, {'$set': new_data})
         return res
