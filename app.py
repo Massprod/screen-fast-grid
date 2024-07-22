@@ -59,10 +59,10 @@ app.add_middleware(
     allow_headers=["*"],  # Allow all headers
 )
 
-app.include_router(presets_router, prefix='/presets', tags=['preset'])
-app.include_router(grid_router, prefix='/grid', tags=['grid'])
-app.include_router(platform_router, prefix='/platform', tags=['platform'])
-app.include_router(wheel_router, prefix='/wheels', tags=['wheels'])
+app.include_router(presets_router, prefix='/presets', tags=['Preset'])
+app.include_router(grid_router, prefix='/grid', tags=['Grid'])
+app.include_router(platform_router, prefix='/platform', tags=['Platform'])
+app.include_router(wheel_router, prefix='/wheels', tags=['Wheels'])
 app.include_router(wheelstack_router, prefix='/wheelstacks', tags=['WheelStack'])
 # app.include_router(orders_router, prefix='/orders', tags=['orders'])
 
