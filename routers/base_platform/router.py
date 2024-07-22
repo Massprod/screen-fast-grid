@@ -10,12 +10,53 @@ from routers.grid.crud import collect_wheelstack_cells
 from routers.base_platform.crud import (platform_make_json_friendly,
                                         get_platform_preset_by_object_id,
                                         create_platform, get_platform_by_name,
-                                        block_platform_cell, unblock_platform_cell, clear_platform_cell)
+                                        block_platform_cell, unblock_platform_cell,
+                                        clear_platform_cell, get_all_platform_ids,
+                                        get_all_platforms_data)
 from utility.utilities import get_object_id
 from constants import DB_PMK_NAME, CLN_BASE_PLATFORM, CLN_PRESETS, PRES_TYPE_PLATFORM, CLN_WHEELSTACKS
 from routers.wheelstacks.crud import db_find_wheelstack_by_object_id
 
 router = APIRouter()
+
+
+@router.get(
+    path='/all',
+    description='Get all `basePlatform`s present in DB',
+    response_class=JSONResponse,
+    name='Get All'
+)
+async def route_get_all_grids(
+        only_id: bool = Query(False,
+                              description='Provide only `objectId` of the elements'),
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+):
+    if only_id:
+        result = await get_all_platform_ids(db, DB_PMK_NAME, CLN_BASE_PLATFORM)
+        for index, grid_id in enumerate(result):
+            result[index] = str(grid_id)
+        if 0 == len(result):
+            raise HTTPException(
+                detail='No `grid`s in DB',
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        return JSONResponse(
+            content=result,
+            status_code=status.HTTP_200_OK,
+        )
+    cor_data: dict = {}
+    result = await get_all_platforms_data(db, DB_PMK_NAME, CLN_BASE_PLATFORM)
+    if 0 == len(result):
+        raise HTTPException(
+            detail='No `grid`s in DB',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    for grid in result:
+        cor_data[str(grid['_id'])] = await platform_make_json_friendly(grid)
+    return JSONResponse(
+        content=cor_data,
+        status_code=status.HTTP_200_OK,
+    )
 
 
 @router.get(

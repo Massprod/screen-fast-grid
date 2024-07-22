@@ -19,11 +19,45 @@ async def platform_make_json_friendly(platform_data):
             if field['blockedBy'] is not None:
                 field['blockedBy'] = str(field['blockedBy'])
     if 'extra' in platform_data:
-        if 'orders' in platform_data:
+        if 'orders' in platform_data['extra']:
             orders = platform_data['extra']['orders']
             for order in orders:
                 orders[order] = str(orders[order])
     return platform_data
+
+
+async def get_all_platforms_data(
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    try:
+        res = await collection.find({}).to_list(length=None)
+        return res
+    except PyMongoError as error:
+        logger.error(f'Error while searching in DB: {error}')
+        raise HTTPException(
+            detail=f'Error while searching in DB',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+async def get_all_platform_ids(
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    try:
+        res = await collection.find({}, {'_id': 1}).to_list(length=None)
+        return res
+    except PyMongoError as error:
+        logger.error(f'Error while searching in DB: {error}')
+        raise HTTPException(
+            detail=f'Error while searching in DB',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 async def get_platform_by_object_id(
