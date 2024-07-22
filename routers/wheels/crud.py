@@ -55,7 +55,7 @@ async def db_update_wheel(
     try:
         wheel_collection = await get_db_collection(db, db_name, db_collection)
         res = await wheel_collection.update_one(
-            {'id_': wheel_object_id},
+            {'_id': wheel_object_id},
             {'$set': wheel_data}
         )
         return res
