@@ -20,9 +20,9 @@ router = APIRouter()
 
 @router.get(
     path='/{platform_object_id}',
-    description='get current platform state in DB by `objectId`',
+    description='Get current `basePlatform` state in DB by `objectId`',
     response_class=JSONResponse,
-    name='Get platform state',
+    name='Get Platform State',
 )
 async def route_get_platform_by_object_id(
         platform_object_id: str = Path(..., description='`objectId` of stored `basePlatform`'),
@@ -32,7 +32,7 @@ async def route_get_platform_by_object_id(
     res = await get_platform_by_object_id(platform_id, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
     if res is None:
         raise HTTPException(
-            detail=f'`platform` with `objectId` = {platform_object_id} not Found.',
+            detail=f'`basePlatform` with `objectId` = {platform_object_id} not Found.',
             status_code=status.HTTP_404_NOT_FOUND,
         )
     cor_res = await platform_make_json_friendly(res)
@@ -47,7 +47,7 @@ async def route_get_platform_by_object_id(
 )
 async def route_get_platform_by_name(
         name: str = Path(...,
-                         description='`name` of stored `grid`'),
+                         description='`name` of stored `basePlatform`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
 ):
     exist = await get_platform_by_name(name, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
@@ -62,29 +62,29 @@ async def route_get_platform_by_name(
 
 @router.get(
     path='/preset/{platform_object_id}',
-    description='get `objectId` of used `preset` to build the `grid`',
+    description='get `objectId` of used `preset` to build the `basePlatform`',
     response_class=JSONResponse,
     name='Get used `preset'
 )
 async def route_get_platform_preset_by_object_id(
         platform_object_id: str = Path(
             ...,
-            description='`objectId` of the `platform` for which we need to get used `preset`',
+            description='`objectId` of the `basePlatform` for which we need to get used `preset`',
         ),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
 ):
-    logger.info(f'Receiver request for a `platform` with `objectId` = {platform_object_id}')
+    logger.info(f'Receiver request for a `basePlatform` with `objectId` = {platform_object_id}')
     platform_id: ObjectId = await get_object_id(platform_object_id)
     res = await get_platform_preset_by_object_id(platform_id, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
     if res is None:
-        logger.warning(f'`platform` with `objectId` = {platform_object_id}. Not found')
+        logger.warning(f'`basePlatform` with `objectId` = {platform_object_id}. Not found')
         raise HTTPException(
-            detail=f'`platform` with `objectId` = {platform_object_id}. Not found',
+            detail=f'`basePlatform` with `objectId` = {platform_object_id}. Not found',
             status_code=status.HTTP_404_NOT_FOUND,
         )
     preset_id = str(res['preset'])
     logger.info(
-        f'Successfully found `preset` `objectId` for `platform` = `{platform_object_id}'
+        f'Successfully found `preset` `objectId` for `basePlatform` = `{platform_object_id}'
         f' Returning `preset` `objectId` {platform_object_id}'
     )
     return JSONResponse(
@@ -97,7 +97,7 @@ async def route_get_platform_preset_by_object_id(
 
 @router.post(
     path='/create/{preset_object_id}',
-    description='Creating an empty `platform` accordingly with provided `preset`',
+    description='Creating an empty `basePlatform` accordingly with provided `preset`',
     response_class=JSONResponse
 )
 async def route_create_empty_platform(
@@ -106,11 +106,11 @@ async def route_create_empty_platform(
                           description='unique name of `basePlatform` to use'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
 ):
-    logger.info(f'Receiver request to create a new `platform` by `objectId` of a `preset` = {preset_object_id}')
+    logger.info(f'Receiver request to create a new `basePlatform` by `objectId` of a `preset` = {preset_object_id}')
     cor_name: str = name.strip()
     if not cor_name:
         raise HTTPException(
-            detail=f"Query parameter `grid_name` shouldn't be empty",
+            detail=f"Query parameter `name` shouldn't be empty",
             status_code=status.HTTP_400_BAD_REQUEST,
         )
     preset_id: ObjectId = await get_object_id(preset_object_id)
@@ -128,15 +128,15 @@ async def route_create_empty_platform(
     exist = await get_platform_by_name(cor_name, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
     if exist:
         raise HTTPException(
-            detail=f'`basePlatform` with such name already exist',
+            detail=f'`basePlatform` with such `name` already exist',
             status_code=status.HTTP_302_FOUND,
         )
     correct_data = await collect_wheelstack_cells(preset_data)
     correct_data['name'] = cor_name
     res = await create_platform(correct_data, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
     logger.info(
-        f'Successfully created a `platform` from `preset` with `objectId` = {preset_object_id}.'
-        f' Returning a new `platform` `objectId` = {res.inserted_id}'
+        f'Successfully created a `basePlatform` from `preset` with `objectId` = {preset_object_id}.'
+        f' Returning a new `basePlatform` `objectId` = {res.inserted_id}'
     )
     return JSONResponse(
         content={
@@ -151,13 +151,13 @@ async def route_create_empty_platform(
     description="`WARNING`"
                 "\n Force placement on some cell without any dependencies."
                 "\n We're just placing `objectId` of the given `wheelStack` in chosen cell."
-                "\n If it's empty, otherwise reject."
+                "\n If it's empty and not blocked, otherwise reject."
                 "\n Without any dependency changes.",
     name='Force Cell Placement',
 )
 async def route_force_place_wheelstack_in_the_platform(
         platform_object_id: str = Path(...,
-                                       description="`objectId` of the `platform` to place into"),
+                                       description="`objectId` of the `basePlatform` to place into"),
         wheelstack_object_id: str = Path(...,
                                          description='`objectId` of the `wheelStacks` to place'),
         row: str = Query(...,
@@ -187,18 +187,19 @@ async def route_force_place_wheelstack_in_the_platform(
             status_code=status.HTTP_403_FORBIDDEN
         )
     platform = await get_platform_by_object_id(platform_id, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
-    # We can take it from DB, but we already have taken data for the `platform`.
+    # We can take it from DB, but we already have taken data for the `basePlatform`.
     # And we can ignore all the data and leave only `_id` of the platform.
     # But I think it's just simpler to check what we already got, without any extra DB calls.
     try:
         cell = platform['rows'][row]['columns'][column]
     except KeyError as error:
-        logger.error(f'Attempt to force placement on non existing cell: `row` = {row} | `column` = {column}')
+        logger.error(f'Attempt to force placement on non existing cell: `row` = {row} | `column` = {column}: {error}')
         raise HTTPException(
             detail=f"{row}|{column} cell doesnt exist",
             status_code=status.HTTP_404_NOT_FOUND,
         )
-    if cell['blocked']:
+    # Order should block by itself with `blocked`, extra check if it doesn't.
+    if cell['blocked'] or cell['blockedBy'] is not None:
         raise HTTPException(
             detail='Cell is blocked',
             status_code=status.HTTP_403_FORBIDDEN,
@@ -218,19 +219,18 @@ async def route_force_place_wheelstack_in_the_platform(
     # Leaving it as extra check. Actually don't need it, we already know placement exists or not.
     if 0 == res.matched_count:
         raise HTTPException(
-            detail='Placement doesnt exist',
+            detail=f'{row}|{column} cell doesnt exist',
             status_code=status.HTTP_404_NOT_FOUND
         )
     if 0 == res.modified_count:
-        status_code = status.HTTP_304_NOT_MODIFIED
-        raise HTTPException(detail='Not modified', status_code=status_code)
+        raise HTTPException(detail='Not modified', status_code=status.HTTP_304_NOT_MODIFIED)
     return Response(status_code=status.HTTP_200_OK)
 
 
 # BLock|Unblock|Clear cells
 @router.put(
     path='/block/{platform_object_id}',
-    description='Force block state on a chosen cell',
+    description='Force block state on a chosen cell without order',
     name='Force Block',
 )
 async def route_force_block_of_cell(
@@ -240,7 +240,7 @@ async def route_force_block_of_cell(
                             description='`column` of desired cell'),
         platform_object_id: str = Path(...,
                                        description='`objectId` of the placement'),
-        db: AsyncIOMotorClient = Depends(mongo_client.depend_client)
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
 ):
     platform_id: ObjectId = await get_object_id(platform_object_id)
     res = await block_platform_cell(platform_id, row, column, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
@@ -254,7 +254,9 @@ async def route_force_block_of_cell(
 
 @router.put(
     path='/unblock/{platform_object_id}',
-    description='Force unblock status on a chosen cell',
+    description='Force unblock status on a chosen cell, not deleting `blockedBy`,'
+                ' only use for unblocking blocked cells, which was blocked not by order, but something else.'
+                'Like: we block cells, so its going to be inactive and unusable for orders (for w.e the reason)',
     name='Force Unblock',
 )
 async def route_force_unblock_of_cell(
@@ -278,7 +280,8 @@ async def route_force_unblock_of_cell(
 
 @router.put(
     path='/clear/{platform_object_id}',
-    description='Force clearing on a chosen cell. Making it empty and unblocked.',
+    description='Force clearing on a chosen cell. Making it empty and unblocked, deleting assigned Order.'
+                ' Without dependencies, order will still be here. You need to extra clear dependencies.',
     name='Force Cell Clear',
 )
 async def route_force_clear_of_cell(
@@ -298,4 +301,3 @@ async def route_force_clear_of_cell(
             status_code=status.HTTP_404_NOT_FOUND
         )
     return Response(status_code=status.HTTP_200_OK)
-

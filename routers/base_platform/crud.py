@@ -13,11 +13,11 @@ async def platform_make_json_friendly(platform_data):
     platform_data['lastChange'] = platform_data['lastChange'].isoformat()
     for row in platform_data['rows']:
         for col in platform_data['rows'][row]['columns']:
-            if platform_data['rows'][row]['columns'][col]['wheelStack'] is None:
-                continue
-            platform_data['rows'][row]['columns'][col]['wheelStack'] = str(
-                platform_data['rows'][row]['columns'][col]['wheelStack']
-            )
+            field = platform_data['rows'][row]['columns'][col]
+            if field['wheelStack'] is not None:
+                field['wheelStack'] = str(field['wheelStack'])
+            if field['blockedBy'] is not None:
+                field['blockedBy'] = str(field['blockedBy'])
     if 'extra' in platform_data:
         if 'orders' in platform_data:
             orders = platform_data['extra']['orders']
@@ -207,7 +207,7 @@ async def get_cell_data(
 
 async def place_wheelstack_in_platform(
         placement_id: ObjectId,
-        wheelstack_object_id: ObjectId | None,
+        wheelstack_object_id: ObjectId,
         row: str,
         column: str,
         db: AsyncIOMotorClient,
@@ -231,9 +231,9 @@ async def place_wheelstack_in_platform(
         result = await collection.update_one(query, update)
         return result
     except PyMongoError as error:
-        logger.error(f'Error while updating `cell_data` in {db_collection}: {error}')
+        logger.error(f'Error while placing `cell_data` in {db_collection}: {error}')
         raise HTTPException(
-            detail=f'Error while updating `cell_data',
+            detail=f'Error while updating `wheelStack',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -322,6 +322,7 @@ async def clear_platform_cell(
         '$set': {
             f'rows.{row}.columns.{column}.wheelStack': None,
             f'rows.{row}.columns.{column}.blocked': False,
+            f'rows.{row}.columns.{column}.blockedBy': None,
             'lastChange': await time_w_timezone(),
         }
     }
