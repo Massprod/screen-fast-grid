@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import Optional
-from pydantic import BaseModel, Field, conlist
+from pydantic import BaseModel, Field, conlist, field_validator
 from constants import (PS_BASE_PLATFORM, PS_GRID,
                        PS_SHIPPED, PS_LABORATORY,
                        PS_REJECTED, PRES_TYPE_GRID,
@@ -66,7 +66,7 @@ class CreateWheelStackRequest(BaseModel):
                                       "  if it's blocked we shouldn't be able to do anything with it.")
     wheels: conlist(str, min_length=0, max_length=7) = Field(
         default_factory=list,
-        description="list with all the `wheel`'s placed in this `wheelStack`."
+        description="list with all `objectId`s of the `wheel`'s to store in this `wheelStack`."
                     " We're using array because we should be able to easily maintain order."
                     " And our wheels placed like 0 -> 5 - indexes, from bottom -> top.",
     )
@@ -78,6 +78,13 @@ class CreateWheelStackRequest(BaseModel):
                                                  f"`{PS_BASE_PLATFORM}` - currently positioned on platform (before "
                                                  "grid)\n"
                                                  f"`{PS_REJECTED}` - marked as rejected and removed")
+
+    @field_validator('wheels')
+    def validate_uniqueness(cls, wheels: list[str]):
+        if len(wheels) != len(set(wheels)):
+            raise ValueError('Each `objectId` of the `wheels` should be unique.')
+        return wheels
+
 
     # @field_validator('createdAt', 'lastChange')
     # def validate_date(cls, date: datetime):
@@ -159,6 +166,12 @@ class ForceUpdateWheelStackRequest(BaseModel):
                                                  f"`{PS_BASE_PLATFORM}` - currently positioned on platform (before "
                                                  "grid)\n"
                                                  f"`{PS_REJECTED}` - marked as rejected and removed")
+
+    @field_validator('wheels')
+    def validate_uniqueness(cls, wheels: list[str]):
+        if len(wheels) != len(set(wheels)):
+            raise ValueError('Each `objectId` of the `wheels` should be unique.')
+        return wheels
 
     class Config:
         json_schema_extra = {
