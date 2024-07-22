@@ -197,6 +197,11 @@ async def route_create_wheel(
                 detail=f'Given `wheelStack` with `objectId` = {wheelstack_id} doesnt exist. Not Found',
                 status_code=status.HTTP_404_NOT_FOUND,
             )
+        if wheelstack_data['batchNumber'] != wheel_data['batchNumber']:
+            raise HTTPException(
+                detail=f'`wheelStacks` can only contain same `batchNumber` wheels = {wheelstack_data['batchNumber']}',
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
         current_wheels: list[ObjectId] = wheelstack_data['wheels']
         if len(current_wheels) == wheelstack_data['maxSize']:
             raise HTTPException(
