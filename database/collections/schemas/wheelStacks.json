@@ -79,7 +79,7 @@
     "wheels": {
       "bsonType": "array",
       "items": {
-        "bsonType": "string",
+        "bsonType": "objectId",
         "description": "must be an `wheelId` of the placed `wheel`s"
       },
       "description": "must be an array of `objectIds` of the placed `wheel`s and is required",
