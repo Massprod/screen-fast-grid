@@ -313,3 +313,129 @@ async def clear_grid_cell(
             detail=f'Error while clearing `cell_data',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+async def db_get_grid_cell_data(
+        grid_id: ObjectId,
+        row: str,
+        col: str,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': grid_id,
+        f'rows.{row}.columns.{col}': {
+            '$exists': True,
+        }
+    }
+    projection = {
+        '_id': 1,
+        f'rows.{row}.columns.{col}': 1,
+    }
+    try:
+        cell_data = await collection.find_one(query, projection)
+        return cell_data
+    except PyMongoError as error:
+        logger.error(f'Error while searching `cell_data` in {db_collection}: {error}')
+        raise HTTPException(
+            detail=f'Error while searching `cell_data`',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+async def db_update_grid_cell_data(
+        grid_id: ObjectId,
+        row: str,
+        col: str,
+        new_data: dict,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': grid_id,
+        f'rows.{row}.columns.{col}': {
+            '$exists': True,
+        }
+    }
+    update = {
+        '$set': {
+            f'rows.{row}.columns.{col}.wheelStack': new_data['wheelStack'],
+            f'rows.{row}.columns.{col}.blocked': new_data['blocked'],
+            f'rows.{row}.columns.{col}.blockedBy': new_data['blockedBy'],
+            'lastChange': await time_w_timezone(),
+        }
+    }
+    try:
+        result = await collection.update_one(query, update)
+        return result
+    except PyMongoError as error:
+        logger.error(f'Error while updating `cell_data` in {db_collection}: {error}')
+        raise HTTPException(
+            detail=f'Error while updating `cell_data`',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+async def db_get_grid_extra_cell_data(
+        grid_id: ObjectId,
+        extra_element_name: str,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': grid_id,
+        f'extra.{extra_element_name}': {
+            '$exists': True,
+        }
+    }
+    projection = {
+        '_id': 1,
+        f'extra.{extra_element_name}': 1,
+    }
+    try:
+        result = await collection.find_one(query, projection)
+        return result
+    except PyMongoError as error:
+        logger.error(f'Error while searching extra `cell_data` in {db_collection}: {error}')
+        raise HTTPException(
+            detail=f'Error while searching extra `cell_data`',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+async def db_update_extra_cell_data(
+        grid_id: ObjectId,
+        extra_element_name: str,
+        new_data: dict,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': grid_id,
+        f'extra.{extra_element_name}': {
+            '$exists': True,
+        }
+    }
+    update = {
+        '$set': {
+            f'extra.{extra_element_name}': new_data,
+            'lastChange': await time_w_timezone(),
+        }
+    }
+    try:
+        result = await collection.update_one(query, update)
+        return result
+    except PyMongoError as error:
+        logger.error(f'Error while updating extra `cell_data` in {db_collection}: {error}')
+        raise HTTPException(
+            detail=f'Error while updating extra `cell_data`',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
