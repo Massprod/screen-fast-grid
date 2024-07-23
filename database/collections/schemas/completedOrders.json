@@ -75,7 +75,7 @@
     },
     "orderType": {
       "bsonType": "string",
-      "enum": ["moveWholeStack", "moveTopWheel", "moveToLaboratory", "mergeWheelStack"],
+      "enum": ["moveWholeStack", "moveTopWheel", "moveToLaboratory", "mergeWheelStacks", "moveToProcessing", "moveToRejected"],
       "description": "Type of operation (moveWholeStack, moveTopWheel, moveToLaboratory, mergeWheelStack)"
     },
     "affectedWheelStacks": {
