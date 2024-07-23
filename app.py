@@ -1,19 +1,19 @@
 from loguru import logger
 from fastapi import FastAPI
 from dotenv import load_dotenv
-from database.mongo_connection import mongo_client
-from database.presets.presets import create_pmk_grid_preset, create_pmk_platform_preset
-from database.collections.collections import create_basic_collections
-from routers.wheels.router import router as wheel_router
-from routers.wheelstacks.router import router as wheelstack_router
-from routers.grid.router import router as grid_router
-from routers.base_platform.router import router as platform_router
-# from routers.orders.router import router as orders_router
-from routers.presets.router import router as presets_router
-from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from constants import PRES_PMK_GRID, PRES_PMK_PLATFORM, DB_PMK_NAME, CLN_PRESETS
+from fastapi.middleware.cors import CORSMiddleware
+from database.mongo_connection import mongo_client
+from routers.grid.router import router as grid_router
+from routers.wheels.router import router as wheel_router
+from routers.orders.router import router as orders_router
+from routers.presets.router import router as presets_router
+from routers.base_platform.router import router as platform_router
+from routers.wheelstacks.router import router as wheelstack_router
 from routers.presets.crud import add_new_preset, get_preset_by_name
+from database.collections.collections import create_basic_collections
+from constants import PRES_PMK_GRID, PRES_PMK_PLATFORM, DB_PMK_NAME, CLN_PRESETS
+from database.presets.presets import create_pmk_grid_preset, create_pmk_platform_preset
 
 
 load_dotenv('.env')
@@ -64,7 +64,7 @@ app.include_router(grid_router, prefix='/grid', tags=['Grid'])
 app.include_router(platform_router, prefix='/platform', tags=['Platform'])
 app.include_router(wheel_router, prefix='/wheels', tags=['Wheels'])
 app.include_router(wheelstack_router, prefix='/wheelstacks', tags=['WheelStack'])
-# app.include_router(orders_router, prefix='/orders', tags=['orders'])
+app.include_router(orders_router, prefix='/orders', tags=['Orders'])
 
 
 # Deprecated, changed to `lifespan`
