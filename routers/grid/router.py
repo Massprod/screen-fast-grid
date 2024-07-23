@@ -219,6 +219,11 @@ async def route_force_place_wheelstack_in_the_grid(
             status_code=status.HTTP_403_FORBIDDEN
         )
     grid = await get_grid_by_object_id(grid_id, db, DB_PMK_NAME, CLN_GRID)
+    if grid is None:
+        raise HTTPException(
+            detail=f'`grid` with `objectId` = {grid_id}. Not Found.',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
     try:
         cell = grid['rows'][row]['columns'][column]
     except KeyError as error:
