@@ -209,7 +209,7 @@ async def get_cell_status(
         )
 
 
-async def get_cell_data(
+async def db_get_platform_cell_data(
         platform_id: ObjectId,
         row: str,
         col: str,
@@ -220,13 +220,13 @@ async def get_cell_data(
     collection = await get_db_collection(db, db_name, db_collection)
     query = {
         '_id': platform_id,
-        f'rows.{row}.columns.{col}.wheelStack': {
+        f'rows.{row}.columns.{col}': {
             '$exists': True,
         }
     }
     projection = {
-        f'rows.{row}.columns.{col}.wheelStack': 1,
-        '_id': 0,
+        '_id': 1,
+        f'rows.{row}.columns.{col}': 1,
     }
     try:
         cell_data = await collection.find_one(query, projection)
@@ -367,5 +367,40 @@ async def clear_platform_cell(
         logger.error(f'Error while clearing `cell` {row}|{column} in {db_collection}: {error}')
         raise HTTPException(
             detail=f'Error while clearing `cell_data',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+async def db_update_platform_cell_data(
+        platform_id: ObjectId,
+        row: str,
+        col: str,
+        new_data: dict,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': platform_id,
+        f'rows.{row}.columns.{col}': {
+            '$exists': True,
+        }
+    }
+    update = {
+        '$set': {
+            f'rows.{row}.columns.{col}.wheelStack': new_data['wheelStack'],
+            f'rows.{row}.columns.{col}.blocked': new_data['blocked'],
+            f'rows.{row}.columns.{col}.blockedBy': new_data['blockedBy'],
+            'lastChange': await time_w_timezone(),
+        }
+    }
+    try:
+        result = await collection.update_one(query, update)
+        return result
+    except PyMongoError as error:
+        logger.error(f'Error while updating `cell_data` in {db_collection}: {error}')
+        raise HTTPException(
+            detail=f'Error while updating `cell_data`',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
