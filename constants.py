@@ -4,9 +4,10 @@ ORDER_MOVE_WHOLE_STACK = 'moveWholeStack'
 ORDER_MOVE_TOP_WHEEL = 'moveTopWheel'
 ORDER_MOVE_TO_LABORATORY = 'moveToLaboratory'
 ORDER_MERGE_WHEEL_STACKS = 'mergeWheelstacks'
+ORDER_MOVE_TO_PROCESSING = 'moveToProcessing'
+ORDER_MOVE_TO_REJECTED = 'moveToRejected'
 
 # Order statuses ENUM.
-ORDER_STATUS_IN_PROGRESS = 'inProgress'
 ORDER_STATUS_COMPLETED = 'completed'
 ORDER_STATUS_CANCELED = 'canceled'
 ORDER_STATUS_PENDING = 'pending'
@@ -32,6 +33,7 @@ PRES_TYPE_GRID = 'grid'
 PRES_TYPE_PLATFORM = 'basePlatform'
 
 # EXTRA ELEMENT TYPES
+EE_GRID_ROW_NAME = 'extra'
 EE_HAND_CRANE = 'handCrane'
 
 # FOLDERS
