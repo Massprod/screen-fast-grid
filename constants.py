@@ -1,56 +1,63 @@
 
 # Order options ENUM.
-ORDER_MOVE_WHOLE_STACK = 'moveWholeStack'
-ORDER_MOVE_TOP_WHEEL = 'moveTopWheel'
-ORDER_MOVE_TO_LABORATORY = 'moveToLaboratory'
-ORDER_MERGE_WHEEL_STACKS = 'mergeWheelstacks'
-ORDER_MOVE_TO_PROCESSING = 'moveToProcessing'
-ORDER_MOVE_TO_REJECTED = 'moveToRejected'
+ORDER_MOVE_WHOLE_STACK: str = 'moveWholeStack'
+ORDER_MOVE_TOP_WHEEL: str = 'moveTopWheel'
+ORDER_MOVE_TO_LABORATORY: str = 'moveToLaboratory'
+ORDER_MERGE_WHEEL_STACKS: str = 'mergeWheelstacks'
+ORDER_MOVE_TO_PROCESSING: str = 'moveToProcessing'
+ORDER_MOVE_TO_REJECTED: str = 'moveToRejected'
 
 # Order statuses ENUM.
-ORDER_STATUS_COMPLETED = 'completed'
-ORDER_STATUS_CANCELED = 'canceled'
-ORDER_STATUS_PENDING = 'pending'
+ORDER_STATUS_COMPLETED: str = 'completed'
+ORDER_STATUS_CANCELED: str = 'canceled'
+ORDER_STATUS_PENDING: str = 'pending'
+
+# BASIC EXTRA MOVES
+BASIC_EXTRA_MOVES: set[str] = {
+    ORDER_MOVE_TO_LABORATORY,
+    ORDER_MOVE_TO_REJECTED,
+    ORDER_MOVE_TO_PROCESSING
+}
 
 # DB names
-DB_PMK_NAME = 'pmkScreen'
+DB_PMK_NAME: str = 'pmkScreen'
 
 # DB Collections
-CLN_ACTIVE_ORDERS = 'activeOrders'
-CLN_BASE_PLATFORM = 'basePlatform'
-CLN_CANCELED_ORDERS = 'canceledOrders'
-CLN_COMPLETED_ORDERS = 'completedOrders'
-CLN_GRID = 'grid'
-CLN_WHEELSTACKS = 'wheelStacks'
-CLN_WHEELS = 'wheels'
-CLN_PRESETS = 'presets'
+CLN_ACTIVE_ORDERS: str = 'activeOrders'
+CLN_BASE_PLATFORM: str = 'basePlatform'
+CLN_CANCELED_ORDERS: str = 'canceledOrders'
+CLN_COMPLETED_ORDERS: str = 'completedOrders'
+CLN_GRID: str = 'grid'
+CLN_WHEELSTACKS: str = 'wheelStacks'
+CLN_WHEELS: str = 'wheels'
+CLN_PRESETS: str = 'presets'
 # PRESETS
-PRES_PMK_GRID = 'pmkGrid'
-PRES_PMK_PLATFORM = 'pmkBasePlatform'
+PRES_PMK_GRID: str = 'pmkGrid'
+PRES_PMK_PLATFORM: str = 'pmkBasePlatform'
 
 # PRESET TYPES
-PRES_TYPE_GRID = 'grid'
-PRES_TYPE_PLATFORM = 'basePlatform'
+PRES_TYPE_GRID: str = 'grid'
+PRES_TYPE_PLATFORM: str = 'basePlatform'
 
 # EXTRA ELEMENT TYPES
-EE_GRID_ROW_NAME = 'extra'
-EE_HAND_CRANE = 'handCrane'
+EE_GRID_ROW_NAME: str = 'extra'
+EE_HAND_CRANE: str = 'handCrane'
 
 # FOLDERS
-FLD_BASIC_SCHEMAS = 'database/collections/schemas'
+FLD_BASIC_SCHEMAS: str = 'database/collections/schemas'
 
 # PLACEMENT STATUSES
-PS_LABORATORY = 'laboratory'
-PS_SHIPPED = 'shipped'
-PS_GRID = 'grid'
-PS_BASE_PLATFORM = 'basePlatform'
-PS_REJECTED = 'rejected'
+PS_LABORATORY: str = 'laboratory'
+PS_SHIPPED: str = 'shipped'
+PS_GRID: str = 'grid'
+PS_BASE_PLATFORM: str = 'basePlatform'
+PS_REJECTED: str = 'rejected'
 
 
 # WHEELSTACKS LIMIT
-WS_MIN_WHEELS = 0
-WS_MAX_WHEELS = 6
+WS_MIN_WHEELS: int = 0
+WS_MAX_WHEELS: int = 6
 
 # WHEELS LIMIT
-WL_MIN_DIAM = 50
-WL_MAX_DIAM = 10000
+WL_MIN_DIAM: int = 50
+WL_MAX_DIAM: int = 10000
