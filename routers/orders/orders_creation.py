@@ -13,7 +13,8 @@ from constants import (PRES_TYPE_GRID, PRES_TYPE_PLATFORM,
                        DB_PMK_NAME, CLN_GRID,
                        CLN_WHEELSTACKS, CLN_BASE_PLATFORM,
                        ORDER_STATUS_PENDING, CLN_ACTIVE_ORDERS,
-                       EE_HAND_CRANE, EE_GRID_ROW_NAME, CLN_WHEELS, ORDER_MOVE_TO_LABORATORY)
+                       EE_HAND_CRANE, EE_GRID_ROW_NAME, CLN_WHEELS,
+                       ORDER_MOVE_TO_LABORATORY, ORDER_MOVE_TO_PROCESSING, ORDER_MOVE_TO_REJECTED)
 
 
 async def orders_create_move_whole_wheelstack(db: AsyncIOMotorClient, order_data: dict) -> ObjectId:
@@ -170,7 +171,7 @@ async def orders_create_move_to_laboratory(db: AsyncIOMotorClient, order_data: d
     # -1-
     if PRES_TYPE_GRID != order_data['source']['placementType']:
         raise HTTPException(
-            detail=f'We can only `moveToLaboratory` from a `grid`',
+            detail=f'We can only {ORDER_MOVE_TO_LABORATORY} from a `grid`',
             status_code=status.HTTP_403_FORBIDDEN,
         )
     source_id = await get_object_id(order_data['source']['placementId'])
@@ -290,6 +291,274 @@ async def orders_create_move_to_laboratory(db: AsyncIOMotorClient, order_data: d
     created_order = await db_create_order(cor_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS)
     created_order_id = created_order.inserted_id
     # Order Creation ---
+    # SOURCE change:
+    #  1. Block SOURCE cell and `wheelStack` on it.
+    new_source_cell_data = {
+        'wheelStack': source_wheelstack_data['_id'],
+        'blocked': True,
+        'blockedBy': created_order_id,
+    }
+    await db_update_grid_cell_data(
+        source_id, source_row, source_col, new_source_cell_data, db, DB_PMK_NAME, CLN_GRID
+    )
+    source_wheelstack_data['blocked'] = True
+    source_wheelstack_data['blockedBy'] = created_order_id
+    await db_update_wheelstack(
+        source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS
+    )
+    # DESTINATION change:
+    #  1. ADD created order into `extra` element `orders`.
+    destination_cell_data['orders'][str(created_order_id)] = created_order_id
+    await db_update_extra_cell_data(
+        destination_id, extra_name, destination_cell_data, db, DB_PMK_NAME, CLN_GRID
+    )
+    return created_order_id
+
+
+async def orders_create_move_to_processing(db: AsyncIOMotorClient, order_data: dict) -> ObjectId:
+    # SOURCE:
+    #  Source can only be a `grid`, because we can't move it from `basePlatform`.
+    #  Or any of the `extra` elements.
+    #  1. Check for a correct SOURCE TYPE and its EXISTENCE
+    #  2. Check for a WheelStack to be present on this cell.
+    #  3. Check if it's not `blocked` <- `wheelStack` and cell itself.
+    # -1-
+    if PRES_TYPE_GRID != order_data['source']['placementType']:
+        raise HTTPException(
+            detail=f'We can only {ORDER_MOVE_TO_PROCESSING} from a `grid`',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    source_id = await get_object_id(order_data['source']['placementId'])
+    source_row = order_data['source']['rowPlacement']
+    source_col = order_data['source']['columnPlacement']
+    source_cell_data = await db_get_grid_cell_data(source_id, source_row, source_col, db, DB_PMK_NAME, CLN_GRID)
+    if source_cell_data is None:
+        raise HTTPException(
+            detail=f'{source_row}|{source_col} <- source cell doesnt exist in the `grid` = {source_id}',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    source_cell_data = source_cell_data['rows'][source_row]['columns'][source_col]
+    if source_cell_data['blocked'] or source_cell_data['blockedBy'] is not None:
+        raise HTTPException(
+            detail=f'{source_row}|{source_col} <- source cell already `blocked` by = {source_cell_data['blockedBy']}',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    # -2-
+    wheelstack_id: ObjectId = source_cell_data['wheelStack']
+    if wheelstack_id is None:
+        raise HTTPException(
+            detail=f'Source cell doesnt contain any `wheelStack` on it. Not Found.',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    source_wheelstack_data = await db_find_wheelstack_by_object_id(
+        wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
+    )
+    if source_wheelstack_data is None:
+        logger.error(f"Corrupted cell: row = {source_row}, col = {source_col}"
+                     f" in a {PRES_TYPE_GRID} with `objectId` = {source_id}."
+                     f" There's non-existing `wheelStack` placed on it = {wheelstack_id}")
+        raise HTTPException(
+            detail=f'Corrupted cell: row = {source_row}, col = {source_col}, inform someone to fix it',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    if source_wheelstack_data['blocked'] or source_wheelstack_data['blockedBy'] is not None:
+        logger.error(f"Corrupted cell: row = {source_row}, col = {source_col}"
+                     f" in a {PRES_TYPE_GRID} with `objectId` = {source_id}."
+                     f" There's `blocked` `wheelStack` placed on it = {wheelstack_id}."
+                     f" And cell is marked as free.")
+        raise HTTPException(
+            detail=f'Source cell `wheelStack` blocked by other order = {source_wheelstack_data['blockedBy']}',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    # DESTINATION:
+    #  Destination can only be one of the `extra` elements of the `grid`.
+    #  `rowPlacement` == `extra`, `columnPlacement` == name of the `extra` element
+    #  1. Check for a correct DESTINATION and its EXISTENCE
+    #  2. Check for it not being `blocked` and being of correct type `EE_HAND_CRANE`.
+    destination_id = await get_object_id(order_data['destination']['placementId'])
+    extra_name = order_data['destination']['elementName']
+    destination_cell_data = await db_get_grid_extra_cell_data(
+        destination_id, extra_name, db, DB_PMK_NAME, CLN_GRID
+    )
+    if destination_cell_data is None:
+        raise HTTPException(
+            detail=f'Extra element = {extra_name} doesnt exist in the `grid` = {destination_id}',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    destination_cell_data = destination_cell_data['extra'][extra_name]
+    if destination_cell_data['blocked']:
+        raise HTTPException(
+            detail=f'Extra element = {extra_name} extra element is `blocked`',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    if destination_cell_data['type'] != EE_HAND_CRANE:
+        raise HTTPException(
+            detail=f'Extra element = {extra_name} chosen extra element of incorrect type.',
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    # +++ Order creation
+    creation_time = await time_w_timezone()
+    order_data['source']['placementId'] = source_id
+    cor_data = {
+        'orderName': order_data['orderName'],
+        'orderDescription': order_data['orderDescription'],
+        'createdAt': creation_time,
+        'lastUpdated': creation_time,
+        'source': order_data['source'],
+        'destination': {
+            'placementType': order_data['destination']['placementType'],
+            'placementId': destination_id,
+            'rowPlacement': EE_GRID_ROW_NAME,
+            'columnPlacement': order_data['destination']['elementName'],
+        },
+        'affectedWheelStacks': {
+            'source': source_wheelstack_data['_id'],
+            'destination': None,
+        },
+        'affectedWheels': {
+            'source': source_wheelstack_data['wheels'],
+            'destination': [],
+        },
+        'status': ORDER_STATUS_PENDING,
+        'orderType': ORDER_MOVE_TO_PROCESSING,
+    }
+    created_order = await db_create_order(cor_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS)
+    created_order_id = created_order.inserted_id
+    # Order creation ---
+    # SOURCE change:
+    #  1. Block SOURCE cell and `wheelStack` on it.
+    new_source_cell_data = {
+        'wheelStack': source_wheelstack_data['_id'],
+        'blocked': True,
+        'blockedBy': created_order_id,
+    }
+    await db_update_grid_cell_data(
+        source_id, source_row, source_col, new_source_cell_data, db, DB_PMK_NAME, CLN_GRID
+    )
+    source_wheelstack_data['blocked'] = True
+    source_wheelstack_data['blockedBy'] = created_order_id
+    await db_update_wheelstack(
+        source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS
+    )
+    # DESTINATION change:
+    #  1. ADD created order into `extra` element `orders`.
+    destination_cell_data['orders'][str(created_order_id)] = created_order_id
+    await db_update_extra_cell_data(
+        destination_id, extra_name, destination_cell_data, db, DB_PMK_NAME, CLN_GRID
+    )
+    return created_order_id
+
+
+async def orders_create_move_to_rejected(db: AsyncIOMotorClient, order_data: dict) -> ObjectId:
+    # SOURCE:
+    #  Source can only be a `grid`, because we can't move it from `basePlatform`.
+    #  Or any of the `extra` elements.
+    #  1. Check for a correct SOURCE TYPE and its EXISTENCE
+    #  2. Check for a WheelStack to be present on this cell.
+    #  3. Check if it's not `blocked` <- `wheelStack` and cell itself.
+    # -1-
+    if PRES_TYPE_GRID != order_data['source']['placementType']:
+        raise HTTPException(
+            detail=f'We can only {ORDER_MOVE_TO_REJECTED} from a `grid`',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    source_id = await get_object_id(order_data['source']['placementId'])
+    source_row = order_data['source']['rowPlacement']
+    source_col = order_data['source']['columnPlacement']
+    source_cell_data = await db_get_grid_cell_data(source_id, source_row, source_col, db, DB_PMK_NAME, CLN_GRID)
+    if source_cell_data is None:
+        raise HTTPException(
+            detail=f'{source_row}|{source_col} <- source cell doesnt exist in the `grid` = {source_id}',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    source_cell_data = source_cell_data['rows'][source_row]['columns'][source_col]
+    if source_cell_data['blocked'] or source_cell_data['blockedBy'] is not None:
+        raise HTTPException(
+            detail=f'{source_row}|{source_col} <- source cell already `blocked` by = {source_cell_data['blockedBy']}',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    # -2-
+    wheelstack_id: ObjectId = source_cell_data['wheelStack']
+    if wheelstack_id is None:
+        raise HTTPException(
+            detail=f'Source cell doesnt contain any `wheelStack` on it. Not Found.',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    source_wheelstack_data = await db_find_wheelstack_by_object_id(
+        wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
+    )
+    if source_wheelstack_data is None:
+        logger.error(f"Corrupted cell: row = {source_row}, col = {source_col}"
+                     f" in a {PRES_TYPE_GRID} with `objectId` = {source_id}."
+                     f" There's non-existing `wheelStack` placed on it = {wheelstack_id}")
+        raise HTTPException(
+            detail=f'Corrupted cell: row = {source_row}, col = {source_col}, inform someone to fix it',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    if source_wheelstack_data['blocked'] or source_wheelstack_data['blockedBy'] is not None:
+        logger.error(f"Corrupted cell: row = {source_row}, col = {source_col}"
+                     f" in a {PRES_TYPE_GRID} with `objectId` = {source_id}."
+                     f" There's `blocked` `wheelStack` placed on it = {wheelstack_id}."
+                     f" And cell is marked as free.")
+        raise HTTPException(
+            detail=f'Source cell `wheelStack` blocked by other order = {source_wheelstack_data['blockedBy']}',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    # DESTINATION:
+    #  Destination can only be one of the `extra` elements of the `grid`.
+    #  `rowPlacement` == `extra`, `columnPlacement` == name of the `extra` element
+    #  1. Check for a correct DESTINATION and its EXISTENCE
+    #  2. Check for it not being `blocked` and being of correct type `EE_HAND_CRANE`.
+    destination_id = await get_object_id(order_data['destination']['placementId'])
+    extra_name = order_data['destination']['elementName']
+    destination_cell_data = await db_get_grid_extra_cell_data(
+        destination_id, extra_name, db, DB_PMK_NAME, CLN_GRID
+    )
+    if destination_cell_data is None:
+        raise HTTPException(
+            detail=f'Extra element = {extra_name} doesnt exist in the `grid` = {destination_id}',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    destination_cell_data = destination_cell_data['extra'][extra_name]
+    if destination_cell_data['blocked']:
+        raise HTTPException(
+            detail=f'Extra element = {extra_name} extra element is `blocked`',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    if destination_cell_data['type'] != EE_HAND_CRANE:
+        raise HTTPException(
+            detail=f'Extra element = {extra_name} chosen extra element of incorrect type.',
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    # +++ Order creation
+    creation_time = await time_w_timezone()
+    order_data['source']['placementId'] = source_id
+    cor_data = {
+        'orderName': order_data['orderName'],
+        'orderDescription': order_data['orderDescription'],
+        'createdAt': creation_time,
+        'lastUpdated': creation_time,
+        'source': order_data['source'],
+        'destination': {
+            'placementType': order_data['destination']['placementType'],
+            'placementId': destination_id,
+            'rowPlacement': EE_GRID_ROW_NAME,
+            'columnPlacement': order_data['destination']['elementName'],
+        },
+        'affectedWheelStacks': {
+            'source': source_wheelstack_data['_id'],
+            'destination': None,
+        },
+        'affectedWheels': {
+            'source': source_wheelstack_data['wheels'],
+            'destination': [],
+        },
+        'status': ORDER_STATUS_PENDING,
+        'orderType': ORDER_MOVE_TO_REJECTED,
+    }
+    created_order = await db_create_order(cor_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS)
+    created_order_id = created_order.inserted_id
+    # Order creation ---
     # SOURCE change:
     #  1. Block SOURCE cell and `wheelStack` on it.
     new_source_cell_data = {

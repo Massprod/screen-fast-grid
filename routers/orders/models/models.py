@@ -70,7 +70,7 @@ class LabSource(BaseModel):
     placementType: LabSourcePlacementType = Field(...,
                                                   description='`placementType` from which we take an object')
     placementId: str = Field(...,
-                             description='`_id` of the `grid` or `basePlatform` used as `source`')
+                             description='`_id` of the `grid` used as `source`')
     rowPlacement: str = Field(...,
                               description='`row` identifier of a cell in a placement')
     columnPlacement: str = Field(...,
@@ -97,3 +97,40 @@ class CreateLabOrderRequest(BaseModel):
                                         description='data to identify and validate `destination` as correct one')
     chosenWheel: str = Field(...,
                              description='`objectId` of a `wheel` which is going to the lab')
+
+
+# PROCESSING ORDER <- actually copy of the LAB, but let's copyPaste,
+#  because they might change, and it's clearer to read.
+class ProcessingSourcePlacementType(str, Enum):
+    grid = PRES_TYPE_GRID
+
+
+class ProcessingSource(BaseModel):
+    placementType: ProcessingSourcePlacementType = Field(...,
+                                                         description='`placementType` from which we take an object')
+    placementId: str = Field(...,
+                             description='`_id` of the `grid` used as `source`')
+    rowPlacement: str = Field(...,
+                              description='`row` identifier of a cell in a placement')
+    columnPlacement: str = Field(...,
+                                 description='`column` identifier of a cell in a placement')
+
+
+class ProcessingDestination(BaseModel):
+    placementType: ProcessingSourcePlacementType = Field(...,
+                                                         description='`placementType` from which we take an object')
+    placementId: str = Field(...,
+                             description='`_id` of the `grid` used as `destination`')
+    elementName: str = Field(...,
+                             description='Name of the `extra` element in the `grid`')
+
+
+class CreateProcessingOrderRequest(BaseModel):
+    orderName: str = Field('',
+                           description='Optional name of the `order`')
+    orderDescription: str = Field('',
+                                  description='Optional description of the `order`')
+    source: ProcessingSource = Field(...,
+                                     description='data to identify and validate `source` as correct one')
+    destination: ProcessingDestination = Field(...,
+                                               description='data to identify and validate `destination` as correct one')

@@ -1,10 +1,16 @@
+from bson import ObjectId
 from database.mongo_connection import mongo_client
 from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi.responses import JSONResponse, Response
-from routers.orders.models.models import CreateMoveOrderRequest, CreateLabOrderRequest
-from routers.orders.order_actions import orders_create_move_whole_wheelstack, orders_create_move_to_laboratory
-from fastapi import APIRouter, Depends, HTTPException, status, Body, Path
-from constants import (ORDER_MOVE_WHOLE_STACK, ORDER_MOVE_TO_LABORATORY, PRES_TYPE_GRID,
+from routers.orders.models.models import CreateMoveOrderRequest, CreateLabOrderRequest, CreateProcessingOrderRequest
+from routers.orders.orders_creation import (orders_create_move_whole_wheelstack,
+                                            orders_create_move_to_laboratory,
+                                            orders_create_move_to_processing,
+                                            orders_create_move_to_rejected,
+                                            )
+from fastapi import APIRouter, Depends, HTTPException, status, Body, Path, Query
+from constants import (ORDER_MOVE_WHOLE_STACK, ORDER_MOVE_TO_LABORATORY, ORDER_MOVE_TO_PROCESSING,
+                       PRES_TYPE_GRID, ORDER_MOVE_TO_REJECTED,
                        PRES_TYPE_PLATFORM, DB_PMK_NAME, CLN_GRID,
                        CLN_WHEELSTACKS, CLN_BASE_PLATFORM, ORDER_STATUS_PENDING, CLN_ACTIVE_ORDERS)
 from routers.grid.crud import db_get_grid_cell_data, db_update_grid_cell_data
@@ -53,8 +59,8 @@ async def route_post_create_order(
 
 
 @router.post(
-    path='/create/lab',
-    description='Creates a new order of type `moveToLaboratory`',
+    path='/create/laboratory',
+    description=f'Creates a new order of type {ORDER_MOVE_TO_LABORATORY}',
     name='New Order',
 )
 async def route_post_create_order_move_to_lab(
@@ -65,6 +71,49 @@ async def route_post_create_order_move_to_lab(
     data = order_data.model_dump()
     logger.info(f'Creating order of type = `{ORDER_MOVE_TO_LABORATORY}`')
     created_order_id = await orders_create_move_to_laboratory(db, data)
+    return JSONResponse(
+        content={
+            '_id': str(created_order_id),
+        },
+        status_code=status.HTTP_201_CREATED,
+    )
+
+
+@router.post(
+    path='/create/process',
+    description=f'Creates a new order of type {ORDER_MOVE_TO_PROCESSING}',
+    name='New Order',
+)
+async def route_post_create_order_move_to_processing(
+        order_data: CreateProcessingOrderRequest = Body(...,
+                                                        description='all required data for a new processing `order`'),
+        db: AsyncIOMotorClient = Depends(mongo_client.get_client)
+):
+    data = order_data.model_dump()
+    logger.info(f'Creating order of type = {ORDER_MOVE_TO_PROCESSING}')
+    created_order_id = await orders_create_move_to_processing(db, data)
+    return JSONResponse(
+        content={
+            '_id': str(created_order_id),
+        },
+        status_code=status.HTTP_201_CREATED,
+    )
+
+
+@router.post(
+    path='/create/reject',
+    description=f'Creates a new order of type {ORDER_MOVE_TO_REJECTED}',
+    name='New Order',
+)
+async def route_post_create_order_move_to_rejected(
+        # TODO: If we change logic for this order, change MODEL
+        order_data: CreateProcessingOrderRequest = Body(...,
+                                                        description='all required data for a new processing `order`'),
+        db: AsyncIOMotorClient = Depends(mongo_client.get_client),
+):
+    data = order_data.model_dump()
+    logger.info(f'Creating order of type = {ORDER_MOVE_TO_REJECTED}')
+    created_order_id = await orders_create_move_to_rejected(db, data)
     return JSONResponse(
         content={
             '_id': str(created_order_id),
