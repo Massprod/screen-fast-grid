@@ -3,6 +3,7 @@ from database.mongo_connection import mongo_client
 from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi.responses import JSONResponse, Response
 from routers.orders.crud import db_find_order_by_object_id
+from routers.orders.orders_completion import orders_complete_move_wholestack
 from routers.orders.orders_cancelation import orders_cancel_basic_extra_element_moves, orders_cancel_move_wholestack
 from routers.orders.models.models import CreateMoveOrderRequest, CreateLabOrderRequest, CreateProcessingOrderRequest
 from routers.orders.orders_creation import (orders_create_move_whole_wheelstack,
@@ -119,7 +120,7 @@ async def route_post_create_order_move_to_rejected(
     )
 
 
-@router.delete(
+@router.post(
     path='/cancel/{order_object_id}',
     description=f'Cancels existing order',
     name='Cancel Order',
@@ -140,9 +141,32 @@ async def route_delete_cancel_order(
         )
     if order_data['orderType'] == ORDER_MOVE_WHOLE_STACK:
         result = await orders_cancel_move_wholestack(order_data, cancellation_reason, db)
-        logger.info(f'Order canceled and moved to `canceledOrder` with `_id` = {result}')
+        logger.info(f'Order canceled and moved to `canceledOrders` with `_id` = {result}')
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     elif order_data['orderType'] in BASIC_EXTRA_MOVES:
         result = await orders_cancel_basic_extra_element_moves(order_data, cancellation_reason, db)
         logger.info(f'Order canceled and moved to `canceledOrders` with `_id` = {result}')
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    path='/complete/{order_object_id}',
+    description=f'Completes existing order, applies all dependencies',
+    name='Complete Order',
+)
+async def route_delete_complete_order(
+        order_object_id: str = Path(...,
+                                    description='`objectId` of the order to complete'),
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+):
+    order_id: ObjectId = await get_object_id(order_object_id)
+    order_data = await db_find_order_by_object_id(order_id, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS)
+    if order_data is None:
+        raise HTTPException(
+            detail=f'Order with `objectId` = {order_id}. Not Found.',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    if order_data['orderType'] == ORDER_MOVE_WHOLE_STACK:
+        result = await orders_complete_move_wholestack(order_data, db)
+        logger.info(f'Order completed and move to `completedOrders` with `_id` = {result}')
         return Response(status_code=status.HTTP_204_NO_CONTENT)
