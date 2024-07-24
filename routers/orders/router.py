@@ -3,7 +3,7 @@ from database.mongo_connection import mongo_client
 from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi.responses import JSONResponse, Response
 from routers.orders.crud import db_find_order_by_object_id
-from routers.orders.orders_cancelation import orders_cancel_move_to_laboratory
+from routers.orders.orders_cancelation import orders_cancel_basic_extra_element_moves, orders_cancel_move_wholestack
 from routers.orders.models.models import CreateMoveOrderRequest, CreateLabOrderRequest, CreateProcessingOrderRequest
 from routers.orders.orders_creation import (orders_create_move_whole_wheelstack,
                                             orders_create_move_to_laboratory,
@@ -13,7 +13,7 @@ from routers.orders.orders_creation import (orders_create_move_whole_wheelstack,
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Path, Query
 from constants import (ORDER_MOVE_WHOLE_STACK, ORDER_MOVE_TO_LABORATORY,
                        ORDER_MOVE_TO_PROCESSING, ORDER_MOVE_TO_REJECTED,
-                       DB_PMK_NAME, CLN_ACTIVE_ORDERS)
+                       DB_PMK_NAME, CLN_ACTIVE_ORDERS, BASIC_EXTRA_MOVES)
 from utility.utilities import get_object_id
 from loguru import logger
 
@@ -138,9 +138,11 @@ async def route_delete_cancel_order(
             detail=f'Order with `objectId` = {order_id}. Not Found.',
             status_code=status.HTTP_404_NOT_FOUND,
         )
-    if ORDER_MOVE_TO_LABORATORY == order_data['orderType']:
-        result = await orders_cancel_move_to_laboratory(order_data, cancellation_reason, db)
-        logger.info(f'Order canceled and move to `canceledOrders` with `_id` = {result}')
+    if order_data['orderType'] == ORDER_MOVE_WHOLE_STACK:
+        result = await orders_cancel_move_wholestack(order_data, cancellation_reason, db)
+        logger.info(f'Order canceled and moved to `canceledOrder` with `_id` = {result}')
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
+    elif order_data['orderType'] in BASIC_EXTRA_MOVES:
+        result = await orders_cancel_basic_extra_element_moves(order_data, cancellation_reason, db)
+        logger.info(f'Order canceled and moved to `canceledOrders` with `_id` = {result}')
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
