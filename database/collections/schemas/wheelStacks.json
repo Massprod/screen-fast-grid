@@ -72,10 +72,6 @@
       "bsonType": "bool",
       "description": "must be a boolean and is required"
     },
-    "blockedBy": {
-      "bsonType": ["objectId", "null"],
-      "description": "`objectId` of the order which is blocked this cell"
-    },
     "wheels": {
       "bsonType": "array",
       "items": {
@@ -102,7 +98,6 @@
     { "keys": { "blocked": 1 }, "options": { "name": "blocked_index" } },
     { "keys": { "wheels": 1 }, "options": { "name": "wheels_index" } },
     { "keys": { "status": 1 }, "options": { "name": "status_index" } },
-    { "keys": { "originalPisId" :  1 }, "options":  { "name": "originalPisId" } },
-    { "keys": { "blockedBy": 1 }, "options": {"name":  "blockedBy_asc_index"} }
+    { "keys": { "originalPisId" :  1 }, "options":  { "name": "originalPisId" } }
   ]
 }

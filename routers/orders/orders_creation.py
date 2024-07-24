@@ -71,13 +71,13 @@ async def orders_create_move_whole_wheelstack(db: AsyncIOMotorClient, order_data
             detail=f'Corrupted cell: row = {source_row}, col = {source_col}, inform someone to fix it',
             status_code=status.HTTP_403_FORBIDDEN,
         )
-    if source_wheelstack_data['blocked'] or source_wheelstack_data['blockedBy'] is not None:
+    if source_wheelstack_data['blocked']:
         logger.error(f"Corrupted cell: row = {source_row}, col = {source_col}"
                      f" in a {PRES_TYPE_GRID} with `objectId` = {source_id}."
                      f" There's `blocked` `wheelStack` placed on it = {wheelstack_id}."
                      f" And cell is marked as free.")
         raise HTTPException(
-            detail=f'Source cell `wheelStack` blocked by other order = {source_wheelstack_data['blockedBy']}',
+            detail=f'Source cell `wheelStack` blocked by other order = {source_wheelstack_data['lastOrder']}',
             status_code=status.HTTP_403_FORBIDDEN,
         )
     # Source ---
@@ -142,7 +142,7 @@ async def orders_create_move_whole_wheelstack(db: AsyncIOMotorClient, order_data
             source_id, source_row, source_col, new_source_cell_data, db, DB_PMK_NAME, CLN_BASE_PLATFORM
         )
     source_wheelstack_data['blocked'] = True
-    source_wheelstack_data['blockedBy'] = created_order_id
+    source_wheelstack_data['lastOrder'] = created_order_id
     await db_update_wheelstack(
         source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS
     )
@@ -208,13 +208,13 @@ async def orders_create_move_to_laboratory(db: AsyncIOMotorClient, order_data: d
             status_code=status.HTTP_403_FORBIDDEN,
         )
     # -3-
-    if source_wheelstack_data['blocked'] or source_wheelstack_data['blockedBy'] is not None:
+    if source_wheelstack_data['blocked']:
         logger.error(f"Corrupted cell: row = {source_row}, col = {source_col}"
                      f" in a {PRES_TYPE_GRID} with `objectId` = {source_id}."
                      f" There's `blocked` `wheelStack` placed on it = {wheelstack_id}."
                      f" And cell is marked as free.")
         raise HTTPException(
-            detail=f'Source cell `wheelStack` blocked by other order = {source_wheelstack_data['blockedBy']}',
+            detail=f'Source cell `wheelStack` blocked by other order = {source_wheelstack_data['lastOrder']}',
             status_code=status.HTTP_403_FORBIDDEN,
         )
     chosen_wheel_id = await get_object_id(order_data['chosenWheel'])
@@ -302,7 +302,7 @@ async def orders_create_move_to_laboratory(db: AsyncIOMotorClient, order_data: d
         source_id, source_row, source_col, new_source_cell_data, db, DB_PMK_NAME, CLN_GRID
     )
     source_wheelstack_data['blocked'] = True
-    source_wheelstack_data['blockedBy'] = created_order_id
+    source_wheelstack_data['lastOrder'] = created_order_id
     await db_update_wheelstack(
         source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS
     )
@@ -361,13 +361,13 @@ async def orders_create_move_to_processing(db: AsyncIOMotorClient, order_data: d
             detail=f'Corrupted cell: row = {source_row}, col = {source_col}, inform someone to fix it',
             status_code=status.HTTP_403_FORBIDDEN,
         )
-    if source_wheelstack_data['blocked'] or source_wheelstack_data['blockedBy'] is not None:
+    if source_wheelstack_data['blocked']:
         logger.error(f"Corrupted cell: row = {source_row}, col = {source_col}"
                      f" in a {PRES_TYPE_GRID} with `objectId` = {source_id}."
                      f" There's `blocked` `wheelStack` placed on it = {wheelstack_id}."
                      f" And cell is marked as free.")
         raise HTTPException(
-            detail=f'Source cell `wheelStack` blocked by other order = {source_wheelstack_data['blockedBy']}',
+            detail=f'Source cell `wheelStack` blocked by other order = {source_wheelstack_data['lastOrder']}',
             status_code=status.HTTP_403_FORBIDDEN,
         )
     # DESTINATION:
@@ -436,7 +436,7 @@ async def orders_create_move_to_processing(db: AsyncIOMotorClient, order_data: d
         source_id, source_row, source_col, new_source_cell_data, db, DB_PMK_NAME, CLN_GRID
     )
     source_wheelstack_data['blocked'] = True
-    source_wheelstack_data['blockedBy'] = created_order_id
+    source_wheelstack_data['lastOrder'] = created_order_id
     await db_update_wheelstack(
         source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS
     )
@@ -495,13 +495,13 @@ async def orders_create_move_to_rejected(db: AsyncIOMotorClient, order_data: dic
             detail=f'Corrupted cell: row = {source_row}, col = {source_col}, inform someone to fix it',
             status_code=status.HTTP_403_FORBIDDEN,
         )
-    if source_wheelstack_data['blocked'] or source_wheelstack_data['blockedBy'] is not None:
+    if source_wheelstack_data['blocked']:
         logger.error(f"Corrupted cell: row = {source_row}, col = {source_col}"
                      f" in a {PRES_TYPE_GRID} with `objectId` = {source_id}."
                      f" There's `blocked` `wheelStack` placed on it = {wheelstack_id}."
                      f" And cell is marked as free.")
         raise HTTPException(
-            detail=f'Source cell `wheelStack` blocked by other order = {source_wheelstack_data['blockedBy']}',
+            detail=f'Source cell `wheelStack` blocked by other order = {source_wheelstack_data['lastOrder']}',
             status_code=status.HTTP_403_FORBIDDEN,
         )
     # DESTINATION:
@@ -570,7 +570,7 @@ async def orders_create_move_to_rejected(db: AsyncIOMotorClient, order_data: dic
         source_id, source_row, source_col, new_source_cell_data, db, DB_PMK_NAME, CLN_GRID
     )
     source_wheelstack_data['blocked'] = True
-    source_wheelstack_data['blockedBy'] = created_order_id
+    source_wheelstack_data['lastOrder'] = created_order_id
     await db_update_wheelstack(
         source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS
     )

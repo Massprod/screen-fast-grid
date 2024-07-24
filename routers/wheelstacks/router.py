@@ -122,7 +122,6 @@ async def route_create_wheelstack(
         'lastOrder': None,
         'maxSize': wheelstack_data['maxSize'],
         'blocked': False,
-        'blockedBy': None,
         'wheels': cor_wheels,
         'status': wheelstack_data['status'],
     }
@@ -212,7 +211,6 @@ async def route_force_update_wheelstack(
         'lastChange': await time_w_timezone(),
         'lastOrder': new_data['lastOrder'],
         'blocked': new_data['blocked'],
-        'blockedBy': await get_object_id(new_data['blockedBy']),
         'wheels': cor_wheels,
         'status': new_data['status'],
     }
