@@ -3,7 +3,7 @@ from loguru import logger
 from fastapi import status
 from pymongo.errors import PyMongoError
 from fastapi.exceptions import HTTPException
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
 from utility.utilities import get_db_collection, time_w_timezone, log_db_record
 
 
@@ -352,7 +352,7 @@ async def db_update_grid_cell_data(
         new_data: dict,
         db: AsyncIOMotorClient,
         db_name: str,
-        db_collection: str
+        db_collection: str,
 ):
     collection = await get_db_collection(db, db_name, db_collection)
     query = {
@@ -427,6 +427,40 @@ async def db_update_extra_cell_data(
     update = {
         '$set': {
             f'extra.{extra_element_name}': new_data,
+            'lastChange': await time_w_timezone(),
+        }
+    }
+    try:
+        result = await collection.update_one(query, update)
+        return result
+    except PyMongoError as error:
+        logger.error(f'Error while updating extra `cell_data` in {db_collection}: {error}')
+        raise HTTPException(
+            detail=f'Error while updating extra `cell_data`',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+async def db_delete_extra_cell_data(
+        grid_id: ObjectId,
+        extra_element_name: str,
+        order_object_id: ObjectId,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': grid_id,
+        f'extra.{extra_element_name}.orders.{str(order_object_id)}': {
+            '$exists': True,
+        }
+    }
+    update = {
+        '$unset': {
+            f'extra.{extra_element_name}.orders.{str(order_object_id)}': 1
+        },
+        '$set': {
             'lastChange': await time_w_timezone(),
         }
     }
