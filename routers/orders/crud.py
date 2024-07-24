@@ -1,9 +1,9 @@
 from loguru import logger
 from pymongo.errors import PyMongoError
 from fastapi import HTTPException, status
-from motor.motor_asyncio import AsyncIOMotorClient
-from datetime import datetime, timezone
-from routers.wheelstacks.crud import db_find_wheelstack, db_find_wheelstack_id_by_placement
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
+from bson import ObjectId
+from utility.utilities import get_db_collection
 
 
 async def get_all_orders_make_json_friendly(order_data: dict):
@@ -25,7 +25,7 @@ async def db_get_all_orders(
         db_collection: str = 'activeOrders',
 ):
     try:
-        orders_collection = db[db_name][db_collection]
+        orders_collection = await get_db_collection(db, db_name, db_collection)
         res = orders_collection.find({})
         return res
     except PyMongoError as e:
@@ -34,14 +34,14 @@ async def db_get_all_orders(
 
 
 async def db_create_order(
+        order_data: dict,
         db: AsyncIOMotorClient,
-        order_data,
-        db_name: str = 'pmkScreen',
-        db_collection: str = 'activeOrders',
+        db_name: str,
+        db_collection: str,
 ):
     try:
-        orders_collection = db[db_name][db_collection]
-        res = await orders_collection.insert_one(order_data)
+        collection = await get_db_collection(db, db_name, db_collection)
+        res = await collection.insert_one(order_data)
         return res
     except PyMongoError as e:
         logger.error(f"Error creating Order: {e}")
@@ -49,14 +49,14 @@ async def db_create_order(
 
 
 async def db_update_order(
+        order_object_id: ObjectId,
+        order_data: dict,
         db: AsyncIOMotorClient,
-        order_object_id,
-        order_data,
-        db_name: str = 'pmkScreen',
-        db_collection: str = 'activeOrders',
+        db_name: str,
+        db_collection: str,
 ):
     try:
-        collection = db[db_name][db_collection]
+        collection = await get_db_collection(db, db_name,db_collection)
         result = await collection.update_one(
             {'_id': order_object_id},
             {'$set': order_data}
@@ -67,14 +67,14 @@ async def db_update_order(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error")
 
 
-async def db_find_order(
+async def db_find_order_by_object_id(
+        order_object_id: ObjectId,
         db: AsyncIOMotorClient,
-        order_object_id,
-        db_name: str = 'pmkScreen',
-        db_collection: str = 'activeOrders',
+        db_name: str,
+        db_collection: str,
 ):
     try:
-        orders_collection = db[db_name][db_collection]
+        orders_collection = await get_db_collection(db, db_name, db_collection)
         res = await orders_collection.find_one({'_id': order_object_id})
         return res
     except PyMongoError as e:
@@ -83,13 +83,13 @@ async def db_find_order(
 
 
 async def db_delete_order(
+        order_object_id: ObjectId,
         db: AsyncIOMotorClient,
-        order_object_id,
+        db_name: str,
         db_collection: str,
-        db_name: str = 'pmkScreen',
 ):
     try:
-        collection = db[db_name][db_collection]
+        collection = await get_db_collection(db, db_name, db_collection)
         res = await collection.delete_one({'_id': order_object_id})
         return res
     except PyMongoError as e:
