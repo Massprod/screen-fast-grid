@@ -137,10 +137,10 @@ async def orders_cancel_move_wholestack(
             source_id, source_row, source_col, db, DB_PMK_NAME, CLN_BASE_PLATFORM
         )
     if source_cell_data is None:
-        logger.error(f'{source_row}|{source_col} <- source cell doesnt exist in the `grid` = {source_id}'
+        logger.error(f'{source_row}|{source_col} <- source cell doesnt exist in the `{source_type}` = {source_id}'
                      f'But given order = {order_data['_id']} marks it as source cell.')
         raise HTTPException(
-            detail=f'{source_row}|{source_col} <- source cell doesnt exist in the `grid` = {source_id}'
+            detail=f'{source_row}|{source_col} <- source cell doesnt exist in the `{source_type}` = {source_id}'
                    f'But given order = {order_data['_id']} marks it as source cell.',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
@@ -155,7 +155,7 @@ async def orders_cancel_move_wholestack(
                    f'But different order is blocking it {source_cell_data['lastOrder']}',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-    # -2- <- Check source wheelStack it should exist.
+    # -2- <- Check source `wheelStack` it should exist.
     source_wheelstack_data = await db_find_wheelstack_by_object_id(
         source_cell_data['wheelStack'], db, DB_PMK_NAME, CLN_WHEELSTACKS
     )
