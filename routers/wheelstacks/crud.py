@@ -1,7 +1,7 @@
 from loguru import logger
 from pymongo.errors import PyMongoError
 from fastapi import HTTPException, status
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
 from bson import ObjectId
 from utility.utilities import get_db_collection, time_w_timezone
 
@@ -12,7 +12,6 @@ async def wheelstack_make_json_friendly(wheelstack_data):
     wheelstack_data['placement']['placementId'] = str(wheelstack_data['placement']['placementId'])
     wheelstack_data['createdAt'] = wheelstack_data['createdAt'].isoformat()
     wheelstack_data['lastChange'] = wheelstack_data['lastChange'].isoformat()
-    wheelstack_data['blockedBy'] = str(wheelstack_data['blockedBy'])
     for index, wheel_id in enumerate(wheelstack_data['wheels']):
         wheelstack_data['wheels'][index] = str(wheel_id)
     return wheelstack_data
@@ -27,7 +26,6 @@ async def all_make_json_friendly(wheelstacks_data):
         wheelstack['placement']['placementId'] = str(wheelstack['placement']['placementId'])
         wheelstack['createdAt'] = wheelstack['createdAt'].isoformat()
         wheelstack['lastChange'] = wheelstack['lastChange'].isoformat()
-        wheelstack['blockedBy'] = str(wheelstack['blockedBy'])
         for index, wheel_id in enumerate(wheelstack['wheels']):
             wheelstack['wheels'][index] = str(wheel_id)
         all_data[wheelstack_id] = wheelstack
@@ -118,7 +116,10 @@ async def db_update_wheelstack(
     try:
         new_data['lastChange'] = await time_w_timezone()
         collection = await get_db_collection(db, db_name, db_collection)
-        res = await collection.update_one({'_id': wheelstack_object_id}, {'$set': new_data})
+        res = await collection.update_one(
+            {'_id': wheelstack_object_id},
+            {'$set': new_data},
+        )
         return res
     except PyMongoError as e:
         logger.error(f"Error updating `wheelStack`: {e}")
