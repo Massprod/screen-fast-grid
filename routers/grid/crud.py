@@ -441,7 +441,7 @@ async def db_update_extra_cell_data(
         )
 
 
-async def db_delete_extra_cell_data(
+async def db_delete_extra_cell_order(
         grid_id: ObjectId,
         extra_element_name: str,
         order_object_id: ObjectId,

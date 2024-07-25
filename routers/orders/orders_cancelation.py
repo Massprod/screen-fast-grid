@@ -2,17 +2,16 @@ from bson import ObjectId
 from loguru import logger
 from fastapi import HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorClient
-from pymongo.errors import PyMongoError
 from routers.base_platform.crud import db_get_platform_cell_data, db_update_platform_cell_data
 from routers.grid.crud import (db_get_grid_cell_data,
                                db_get_grid_extra_cell_data,
                                db_update_grid_cell_data,
-                               db_delete_extra_cell_data)
+                               db_delete_extra_cell_order)
 from routers.wheelstacks.crud import db_find_wheelstack_by_object_id, db_update_wheelstack
 from routers.orders.crud import db_delete_order, db_create_order
 from constants import (DB_PMK_NAME, CLN_ACTIVE_ORDERS, CLN_GRID, CLN_WHEELSTACKS,
                        ORDER_STATUS_CANCELED, CLN_CANCELED_ORDERS, PRES_TYPE_GRID,
-                       PRES_TYPE_PLATFORM, CLN_BASE_PLATFORM, ORDER_MERGE_WHEEL_STACKS, ORDER_MOVE_TOP_WHEEL)
+                       PRES_TYPE_PLATFORM, CLN_BASE_PLATFORM)
 from utility.utilities import time_w_timezone
 
 
@@ -91,7 +90,7 @@ async def orders_cancel_basic_extra_element_moves(
         source_id, source_row, source_col, source_cell_data, db, DB_PMK_NAME, CLN_GRID
     )
     # -5- <- Delete order from destination extra element
-    await db_delete_extra_cell_data(
+    await db_delete_extra_cell_order(
         dest_id, dest_element_name, order_data['_id'], db, DB_PMK_NAME, CLN_GRID
     )
     # -6- <- Unblock `wheelStack` and update `lastOrder`.
