@@ -16,6 +16,14 @@ from constants import PRES_PMK_GRID, PRES_PMK_PLATFORM, DB_PMK_NAME, CLN_PRESETS
 from database.presets.presets import create_pmk_grid_preset, create_pmk_platform_preset
 
 
+# TODO: We need to find a way to use transactions.
+#  Container creation is already done, but for some reason we can't connect to it.
+#  But we shouldn't make DB-records with multiple collections without transactions.
+#  We have like 5-6 add|update|delete one-by-one if one fails, we won't be able to change previous.
+#  Need to find the way, if we can build container and it's working correctly and responding.
+#  Then we totally can somehow connect to it, need more research.
+#  But it's not critical until we actually use this APP.
+
 load_dotenv('.env')
 
 
@@ -27,6 +35,11 @@ logger.add(
     backtrace=True,
     diagnose=True,
 )
+
+# TODO: If we're going to satisfy with our solution, and have more time.
+#  Refactor orders and actually everything, because there's a LOT of copies.
+#  Which we can cull, and create a single method for SOURCE|DEST checks etc.
+#  For now, we're just leaving it like this, no time to bother.
 
 
 @asynccontextmanager
