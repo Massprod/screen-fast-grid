@@ -2,7 +2,7 @@ from bson import ObjectId
 from database.mongo_connection import mongo_client
 from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi.responses import JSONResponse, Response
-from routers.orders.crud import db_find_order_by_object_id
+from routers.orders.crud import db_find_order_by_object_id, db_get_all_orders, order_make_json_friendly
 from routers.orders.orders_completion import (orders_complete_move_wholestack,
                                               orders_complete_move_to_rejected,
                                               orders_complete_move_to_processing,
@@ -17,7 +17,8 @@ from routers.orders.orders_creation import (orders_create_move_whole_wheelstack,
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Path, Query
 from constants import (ORDER_MOVE_WHOLE_STACK, ORDER_MOVE_TO_LABORATORY,
                        ORDER_MOVE_TO_PROCESSING, ORDER_MOVE_TO_REJECTED,
-                       DB_PMK_NAME, CLN_ACTIVE_ORDERS, BASIC_EXTRA_MOVES)
+                       DB_PMK_NAME, CLN_ACTIVE_ORDERS, BASIC_EXTRA_MOVES,
+                       CLN_COMPLETED_ORDERS, CLN_CANCELED_ORDERS)
 from utility.utilities import get_object_id
 from loguru import logger
 
@@ -32,6 +33,49 @@ router = APIRouter()
 #  create a different order to move it from here to w.e the place we want.
 #  In this case, we can always know where's is it and manipulate it easier.
 #  So, it can be a potential rebuild of all of the ORDERS, but let's stick for a thing we been told.
+
+
+@router.get(
+    path='/order/all',
+    description='Get all of the order types, or filter them with query.'
+                'Returns all types by default.',
+    name='Get Orders',
+)
+async def route_get_all_orders(
+        active_orders: bool = Query(True,
+                                    description='False to exclude `activeOrders'),
+        completed_orders: bool = Query(True,
+                                       description='False to exclude `completedOrders`'),
+        canceled_orders: bool = Query(True,
+                                      description='False to exclude `canceledOrders`'),
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+):
+    all_data = {}
+    if active_orders:
+        active = await db_get_all_orders(db, DB_PMK_NAME, CLN_ACTIVE_ORDERS)
+        active_json = {}
+        for order_data in active:
+            order_json = await order_make_json_friendly(order_data)
+            active_json[order_json['_id']] = order_json
+        all_data['activeOrders'] = active_json
+    if completed_orders:
+        completed = await db_get_all_orders(db, DB_PMK_NAME, CLN_COMPLETED_ORDERS)
+        completed_json = {}
+        for order_data in completed:
+            order_json = await order_make_json_friendly(order_data)
+            completed_json[order_json['_id']] = order_json
+        all_data['completedOrders'] = completed_json
+    if canceled_orders:
+        canceled = await db_get_all_orders(db, DB_PMK_NAME, CLN_CANCELED_ORDERS)
+        canceled_json = {}
+        for order_data in canceled:
+            order_json = await order_make_json_friendly(order_data)
+            canceled_json[order_json['_id']] = order_json
+        all_data['canceledOrders'] = canceled_json
+    return JSONResponse(
+        content=all_data,
+        status_code=status.HTTP_200_OK,
+    )
 
 
 @router.post(

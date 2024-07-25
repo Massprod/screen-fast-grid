@@ -6,12 +6,28 @@ from bson import ObjectId
 from utility.utilities import get_db_collection
 
 
-async def get_all_orders_make_json_friendly(order_data: dict):
+async def order_make_json_friendly(order_data: dict):
     order_data['_id'] = str(order_data['_id'])
-    for wheel_stack in order_data['affectedWheelStacks']:
-        order_data['affectedWheelStacks'][wheel_stack] = str(order_data['affectedWheelStacks'][wheel_stack])
+    order_data['source']['placementId'] = str(order_data['source']['placementId'])
+    order_data['destination']['placementId'] = str(order_data['destination']['placementId'])
     order_data['createdAt'] = order_data['createdAt'].isoformat()
     order_data['lastUpdated'] = order_data['lastUpdated'].isoformat()
+    source_wheelstack = order_data['affectedWheelStacks']['source']
+    if source_wheelstack:
+        order_data['affectedWheelStacks']['source'] = str(source_wheelstack)
+    dest_wheelstack = order_data['affectedWheelStacks']['destination']
+    if dest_wheelstack:
+        order_data['affectedWheelStacks']['destination'] = str(dest_wheelstack)
+    source_wheels = order_data['affectedWheels']['source']
+    if source_wheels:
+        for index, wheel in enumerate(source_wheels):
+            source_wheels[index] = str(wheel)
+        order_data['affectedWheels']['source'] = source_wheels
+    dest_wheels = order_data['affectedWheels']['destination']
+    if dest_wheels:
+        for index, wheel in enumerate(dest_wheels):
+            dest_wheels[index] = str(wheel)
+        order_data['affectedWheels']['destination'] = dest_wheels
     if 'completedAt' in order_data:
         order_data['completedAt'] = order_data['completedAt'].isoformat()
     if 'canceledAt' in order_data:
@@ -21,12 +37,12 @@ async def get_all_orders_make_json_friendly(order_data: dict):
 
 async def db_get_all_orders(
         db: AsyncIOMotorClient,
-        db_name: str = 'pmkScreen',
-        db_collection: str = 'activeOrders',
+        db_name: str,
+        db_collection: str,
 ):
+    orders_collection = await get_db_collection(db, db_name, db_collection)
     try:
-        orders_collection = await get_db_collection(db, db_name, db_collection)
-        res = orders_collection.find({})
+        res = await orders_collection.find({}).to_list(length=None)
         return res
     except PyMongoError as e:
         logger.error(f"Error getting Orders: {e}")
