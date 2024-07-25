@@ -41,8 +41,27 @@ async def db_get_all_orders(
         db_collection: str,
 ):
     orders_collection = await get_db_collection(db, db_name, db_collection)
+    query = {}
     try:
-        res = await orders_collection.find({}).to_list(length=None)
+        res = await orders_collection.find(query).to_list(length=None)
+        return res
+    except PyMongoError as e:
+        logger.error(f"Error getting Orders: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error")
+
+
+async def db_get_order_by_object_id(
+        order_object_id: ObjectId,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+):
+    order_collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': order_object_id,
+    }
+    try:
+        res = await order_collection.find_one(query)
         return res
     except PyMongoError as e:
         logger.error(f"Error getting Orders: {e}")

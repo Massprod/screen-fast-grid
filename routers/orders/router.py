@@ -2,7 +2,10 @@ from bson import ObjectId
 from database.mongo_connection import mongo_client
 from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi.responses import JSONResponse, Response
-from routers.orders.crud import db_find_order_by_object_id, db_get_all_orders, order_make_json_friendly
+from routers.orders.crud import (db_find_order_by_object_id,
+                                 db_get_all_orders,
+                                 order_make_json_friendly,
+                                 db_get_order_by_object_id,)
 from routers.orders.orders_completion import (orders_complete_move_wholestack,
                                               orders_complete_move_to_rejected,
                                               orders_complete_move_to_processing,
@@ -33,6 +36,48 @@ router = APIRouter()
 #  create a different order to move it from here to w.e the place we want.
 #  In this case, we can always know where's is it and manipulate it easier.
 #  So, it can be a potential rebuild of all of the ORDERS, but let's stick for a thing we been told.
+
+
+@router.get(
+    path='/order/{order_object_id}',
+    description='Get a single order data by its `objectId`.'
+                ' Can be filtered by `orderType`.'
+                ' Searching for all `orderType`s by default.',
+    name='Get Order',
+)
+async def route_get_order(
+        order_object_id: str = Path(...,
+                                    description='`objectId` of the order to search'),
+        active_order: bool = Query(True,
+                                   description='False to exclude `activeOrders`'),
+        completed_order: bool = Query(True,
+                                      description='False to exclude `completedOrders`'),
+        canceled_order: bool = Query(True,
+                                     description='False to exclude `canceledOrders`'),
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+):
+    order_id = await get_object_id(order_object_id)
+    order_filter = {
+        CLN_ACTIVE_ORDERS: active_order,
+        CLN_COMPLETED_ORDERS: completed_order,
+        CLN_CANCELED_ORDERS: canceled_order,
+    }
+    for collection, include in order_filter.items():
+        if not include:
+            continue
+        order_data = await db_get_order_by_object_id(
+            order_id, db, DB_PMK_NAME, collection
+        )
+        if order_data is not None:
+            order_data = await order_make_json_friendly(order_data)
+            return JSONResponse(
+                content=order_data,
+                status_code=status.HTTP_200_OK,
+            )
+    raise HTTPException(
+        detail=f'Order with `objectId` = {order_object_id}. Not Found.',
+        status_code=status.HTTP_404_NOT_FOUND,
+    )
 
 
 @router.get(
