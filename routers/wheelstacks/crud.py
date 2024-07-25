@@ -94,8 +94,8 @@ async def db_insert_wheelstack(
 async def db_delete_wheelstack(
         wheelstack_object_id: ObjectId,
         db: AsyncIOMotorClient,
-        db_name,
-        db_collection,
+        db_name: str,
+        db_collection: str,
 ):
     try:
         wheelstacks_collection = await get_db_collection(db, db_name, db_collection)
@@ -110,8 +110,8 @@ async def db_update_wheelstack(
         new_data: dict,
         wheelstack_object_id: ObjectId,
         db: AsyncIOMotorClient,
-        db_name,
-        db_collection,
+        db_name: str,
+        db_collection: str,
 ):
     try:
         new_data['lastChange'] = await time_w_timezone()
@@ -126,20 +126,23 @@ async def db_update_wheelstack(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database update error")
 
 
-async def db_find_wheelstack_id_by_placement(
+async def db_get_wheelstack_last_change(
+        wheelstack_object_id: ObjectId,
         db: AsyncIOMotorClient,
-        row: str,
-        column: str,
-        db_collection: str,
-        preset: str,
         db_name: str,
+        db_collection: str,
 ):
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': wheelstack_object_id,
+    }
+    projection = {
+        '_id': 1,
+        'lastChange': 1,
+    }
     try:
-        collection = db[db_name][db_collection]
-        projection = {f'rows.{row}.columns.{column}.wheelStack': 1}
-        resp = await collection.find_one({'preset': preset}, projection)
-        wheelstack_object_id = resp['rows'][row]['columns'][column]['wheelStack']
-        return wheelstack_object_id
+        result = await collection.find_one(query, projection)
+        return result
     except PyMongoError as e:
-        logger.error(f"Error inserting wheel: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database insertion error")
+        logger.error(f"Error searching `wheelStack`: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database search error")

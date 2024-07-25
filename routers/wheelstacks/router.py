@@ -6,7 +6,8 @@ from .models.models import CreateWheelStackRequest, ForceUpdateWheelStackRequest
 from .crud import (db_find_all_wheelstacks, db_insert_wheelstack,
                    db_delete_wheelstack, wheelstack_make_json_friendly,
                    all_make_json_friendly, db_update_wheelstack,
-                   db_find_wheelstack_by_object_id, db_find_wheelstack_by_pis)
+                   db_find_wheelstack_by_object_id, db_find_wheelstack_by_pis,
+                   db_get_wheelstack_last_change)
 from bson import ObjectId
 from utility.utilities import get_object_id, time_w_timezone
 from constants import DB_PMK_NAME, CLN_WHEELSTACKS, CLN_BASE_PLATFORM, CLN_WHEELS
@@ -250,5 +251,30 @@ async def route_get_all_wheelstacks(
     resp = await all_make_json_friendly(data)
     return JSONResponse(
         content=resp,
+        status_code=status.HTTP_200_OK,
+    )
+
+
+@router.get(
+    path='/change_time/{wheelstack_object_id}',
+    description='Getting `lastChange` of the chosen `wheelstack`',
+    name='Get Last Change',
+)
+async def route_get_last_change(
+        wheelstack_object_id: str = Path(...,
+                                         description='`objectId` of the `wheelStack` to search'),
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+):
+    wheelstack_id: ObjectId = await get_object_id(wheelstack_object_id)
+    res = await db_get_wheelstack_last_change(wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS)
+    if res is None:
+        raise HTTPException(
+            detail=f'grid with `objectId` = {wheelstack_object_id}. Not Found',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    res['_id'] = str(res['_id'])
+    res['lastChange'] = res['lastChange'].isoformat()
+    return JSONResponse(
+        content=res,
         status_code=status.HTTP_200_OK,
     )
