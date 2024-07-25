@@ -3,7 +3,8 @@ from database.mongo_connection import mongo_client
 from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi.responses import JSONResponse, Response
 from routers.orders.crud import db_find_order_by_object_id
-from routers.orders.orders_completion import orders_complete_move_wholestack
+from routers.orders.orders_completion import (orders_complete_move_wholestack,
+                                              orders_complete_move_to_rejected)
 from routers.orders.orders_cancelation import orders_cancel_basic_extra_element_moves, orders_cancel_move_wholestack
 from routers.orders.models.models import CreateMoveOrderRequest, CreateLabOrderRequest, CreateProcessingOrderRequest
 from routers.orders.orders_creation import (orders_create_move_whole_wheelstack,
@@ -168,5 +169,9 @@ async def route_delete_complete_order(
         )
     if order_data['orderType'] == ORDER_MOVE_WHOLE_STACK:
         result = await orders_complete_move_wholestack(order_data, db)
-        logger.info(f'Order completed and move to `completedOrders` with `_id` = {result}')
+        logger.info(f'Order completed and moved to `completedOrders` with `_id` = {result}')
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    elif order_data['orderType'] == ORDER_MOVE_TO_REJECTED:
+        result = await orders_complete_move_to_rejected(order_data, db)
+        logger.info(f'Order completed and moved to `completedOrder` with `_id` = {result}')
         return Response(status_code=status.HTTP_204_NO_CONTENT)
