@@ -63,6 +63,31 @@ async def db_update_wheel_status(
     }
     try:
         res = await wheel_collection.update_one(query, update)
+        return res
+    except PyMongoError as e:
+        logger.error(f"Error updating wheel: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database update error")
+
+
+async def db_update_wheel_position(
+        wheel_object_id: ObjectId,
+        new_position: int,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+):
+    wheel_collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': wheel_object_id,
+    }
+    update = {
+        '$set': {
+            'wheelStack.wheelStackPosition': new_position,
+        }
+    }
+    try:
+        res = await wheel_collection.update_one(query, update)
+        return res
     except PyMongoError as e:
         logger.error(f"Error updating wheel: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database update error")
