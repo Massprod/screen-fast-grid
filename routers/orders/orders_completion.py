@@ -15,7 +15,7 @@ from constants import (PRES_TYPE_GRID, PRES_TYPE_PLATFORM,
                        DB_PMK_NAME, CLN_GRID, CLN_BASE_PLATFORM,
                        CLN_WHEELSTACKS, CLN_WHEELS, CLN_ACTIVE_ORDERS,
                        CLN_COMPLETED_ORDERS, ORDER_STATUS_COMPLETED,
-                       PS_REJECTED, PS_GRID)
+                       PS_REJECTED, PS_GRID, PS_SHIPPED)
 
 
 async def orders_complete_move_wholestack(order_data: dict, db: AsyncIOMotorClient) -> ObjectId:
@@ -147,6 +147,122 @@ async def orders_complete_move_wholestack(order_data: dict, db: AsyncIOMotorClie
     return completed_order.inserted_id
 
 
+async def orders_complete_move_to_processing(order_data: dict, db: AsyncIOMotorClient) -> ObjectId:
+    # Source can only be a `grid`
+    # -1- Check if source cell exists and correct `wheelStack` on it
+    source_type: str = order_data['source']['placementType']
+    source_id: ObjectId = order_data['source']['placementId']
+    source_row: str = order_data['source']['rowPlacement']
+    source_col: str = order_data['source']['columnPlacement']
+    source_cell_data = await db_get_grid_cell_data(
+        source_id, source_row, source_col, db, DB_PMK_NAME, CLN_GRID
+    )
+    if source_cell_data is None:
+        logger.error(f'{source_row}|{source_col} <- source cell doesnt exist in the `{source_type}` = {source_id}'
+                     f'But given order = {order_data['_id']} marks it as source cell.')
+        raise HTTPException(
+            detail=f'{source_row}|{source_col} <- source cell doesnt exist in the `{source_type}` = {source_id}'
+                   f'But given order = {order_data['_id']} marks it as source cell.',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+    source_cell_data = source_cell_data['rows'][source_row]['columns'][source_col]
+    if source_cell_data['blockedBy'] != order_data['_id']:
+        logger.error(f'Corrupted `order` = {order_data['_id']},'
+                     f' marking cell {source_row}|{source_col} in `grid` {source_id}.'
+                     f'But different order is blocking it {source_cell_data['lastOrder']}')
+        raise HTTPException(
+            detail=f'Corrupted `order` = {order_data['_id']},'
+                   f' marking cell {source_row}|{source_col} in `grid` {source_id}.'
+                   f'But different order is blocking it {source_cell_data['lastOrder']}',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    # -2- <- Check source `wheelStack` it should exist
+    source_wheelstack_data = await db_find_wheelstack_by_object_id(
+        source_cell_data['wheelStack'], db, DB_PMK_NAME, CLN_WHEELSTACKS
+    )
+    if source_wheelstack_data is None:
+        logger.error(
+            f'Corrupted cell {source_row}|{source_col} in grid = {source_id}.'
+            f'Marks `wheelStacks` {source_cell_data['wheelStack']} as placed on it, but it doesnt exist.'
+        )
+        raise HTTPException(
+            detail=f'Corrupted cell {source_row}|{source_col} in grid = {source_id}.'
+                   f'Marks `wheelStacks` {source_cell_data['wheelStack']} as placed on it, but it doesnt exist.',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+    # -3- <- Check destination it should exist and have this order
+    dest_type = order_data['destination']['placementType']
+    dest_id = order_data['destination']['placementId']
+    dest_element_row = order_data['destination']['rowPlacement']
+    dest_element_name = order_data['destination']['columnPlacement']
+    destination_cell_data = await db_get_grid_extra_cell_data(
+        dest_id, dest_element_name, db, DB_PMK_NAME, CLN_GRID
+    )
+    if destination_cell_data is None:
+        logger.error(
+            f'Corrupted `grid` = {dest_id}  cell {dest_element_row}|{dest_element_name}.'
+            f'Used in order = {order_data['_id']}, but it doesnt exist.'
+        )
+        raise HTTPException(
+            detail=f'Corrupted extra element cell {dest_element_row}|{dest_element_name}.'
+                   f'Used in order = {order_data['_id']}, but it doesnt exist.',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+    destination_cell_data = destination_cell_data['extra'][dest_element_name]
+    if str(order_data['_id']) not in destination_cell_data['orders']:
+        logger.error(
+            f'Corrupted order = {order_data['_id']} marked as placed in'
+            f'grid = {dest_id} cell {dest_element_row}|{dest_element_name}.'
+            f'But it doesnt exist in this cell orders.'
+        )
+        raise HTTPException(
+            detail=f'Corrupted order = {order_data['_id']} marked as placed in'
+                   f'grid = {dest_id} cell {dest_element_row}|{dest_element_name}.'
+                   f'But it doesnt exist in this cell orders.',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+    # -4- <- Clear source cell
+    source_cell_data['wheelStack'] = None
+    source_cell_data['blockedBy'] = None
+    source_cell_data['blocked'] = False
+    await db_update_grid_cell_data(
+        source_id, source_row, source_col, source_cell_data, db, DB_PMK_NAME, CLN_GRID
+    )
+    # -5- <- Delete order from destination element
+    await db_delete_extra_cell_order(
+        dest_id, dest_element_name, order_data['_id'], db, DB_PMK_NAME, CLN_GRID
+    )
+    # -6- <- Update `wheelStack` record
+    source_wheelstack_data['placement']['type'] = dest_type
+    source_wheelstack_data['placement']['placementId'] = dest_id
+    source_wheelstack_data['rowPlacement'] = dest_element_row
+    source_wheelstack_data['colPlacement'] = dest_element_name
+    source_wheelstack_data['lastOrder'] = order_data['_id']
+    source_wheelstack_data['status'] = PS_SHIPPED
+    source_wheelstack_data['blocked'] = True
+    await db_update_wheelstack(
+        source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS
+    )
+    # -7- <- Update status for each wheel
+    for wheel in order_data['affectedWheels']['source']:
+        await db_update_wheel_status(
+            wheel, PS_SHIPPED, db, DB_PMK_NAME, CLN_WHEELS
+        )
+    # -8- Delete order from `activeOrders`
+    await db_delete_order(
+        order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS
+    )
+    # -9- Add order into `completedOrders`
+    completion_time = await time_w_timezone()
+    order_data['status'] = ORDER_STATUS_COMPLETED
+    order_data['lastUpdated'] = completion_time
+    order_data['completedAt'] = completion_time
+    completed_order = await db_create_order(
+        order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS
+    )
+    return completed_order.inserted_id
+
+
 async def orders_complete_move_to_rejected(order_data: dict, db: AsyncIOMotorClient) -> ObjectId:
     # Source can only be a `grid`
     # -1- Check if source cell exists and correct `wheelStack` on it
@@ -261,3 +377,4 @@ async def orders_complete_move_to_rejected(order_data: dict, db: AsyncIOMotorCli
         order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS
     )
     return completed_order.inserted_id
+
