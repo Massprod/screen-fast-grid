@@ -2,7 +2,7 @@ from loguru import logger
 from fastapi import APIRouter, Depends, status, Query, Path, HTTPException, Response
 from fastapi.responses import JSONResponse
 from database.mongo_connection import mongo_client
-from .crud import get_platform_by_object_id, place_wheelstack_in_platform
+from .crud import get_platform_by_object_id, place_wheelstack_in_platform, db_get_platform_last_change_time
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 from routers.presets.crud import get_preset_by_id
@@ -342,3 +342,28 @@ async def route_force_clear_of_cell(
             status_code=status.HTTP_404_NOT_FOUND
         )
     return Response(status_code=status.HTTP_200_OK)
+
+
+@router.get(
+    path='/change_time/{platform_object_id}',
+    description='Get stored `lastChange` timestamp when `basePlatform` was last time changed.',
+    name='Get Last Change',
+)
+async def route_get_change_time(
+        platform_object_id: str = Path(...,
+                                       description='`objectId` of the `grid` to search'),
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+):
+    platform_id = await get_object_id(platform_object_id)
+    res = await db_get_platform_last_change_time(platform_id, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
+    if res is None:
+        raise HTTPException(
+            detail=f'platform with `objectId` = {platform_object_id}. Not Found',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    res['_id'] = str(res['_id'])
+    res['lastChange'] = res['lastChange'].isoformat()
+    return JSONResponse(
+        content=res,
+        status_code=status.HTTP_200_OK,
+    )

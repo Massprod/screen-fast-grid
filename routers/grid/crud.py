@@ -473,3 +473,28 @@ async def db_delete_extra_cell_order(
             detail=f'Error while updating extra `cell_data`',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+async def db_get_grid_last_change_time(
+        grid_id: ObjectId,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': grid_id,
+    }
+    projection = {
+        '_id': 1,
+        'lastChange': 1,
+    }
+    try:
+        result = await collection.find_one(query, projection)
+        return result
+    except PyMongoError as error:
+        logger.error(f'Error while searching in {db_collection}: {error}')
+        raise HTTPException(
+            detail=f'Error while getting `lastChange` time',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

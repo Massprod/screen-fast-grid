@@ -5,7 +5,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from .crud import (get_grid_by_object_id, grid_make_json_friendly,
                    place_wheelstack_in_grid, create_grid, block_grid_cell, unblock_grid_cell,
                    collect_wheelstack_cells, get_grid_preset_by_object_id, get_grid_by_name,
-                   clear_grid_cell, get_all_grid_ids, get_all_grids_data)
+                   clear_grid_cell, get_all_grid_ids, get_all_grids_data, db_get_grid_last_change_time)
 from bson import ObjectId
 from ..wheelstacks.crud import db_find_wheelstack_by_object_id
 from constants import DB_PMK_NAME, CLN_GRID, CLN_PRESETS, PRES_TYPE_GRID, CLN_WHEELSTACKS
@@ -333,3 +333,28 @@ async def route_force_clear_of_cell(
             status_code=status.HTTP_404_NOT_FOUND
         )
     return Response(status_code=status.HTTP_200_OK)
+
+
+@router.get(
+    path='/change_time/{grid_object_id}',
+    description='Get stored `lastChange` timestamp when `grid` was last time changed.',
+    name='Get Last Change',
+)
+async def route_get_change_time(
+        grid_object_id: str = Path(...,
+                                   description='`objectId` of the `grid` to search'),
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+):
+    grid_id: ObjectId = await get_object_id(grid_object_id)
+    res = await db_get_grid_last_change_time(grid_id, db, DB_PMK_NAME, CLN_GRID)
+    if res is None:
+        raise HTTPException(
+            detail=f'grid with `objectId` = {grid_object_id}. Not Found',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    res['_id'] = str(res['_id'])
+    res['lastChange'] = res['lastChange'].isoformat()
+    return JSONResponse(
+        content=res,
+        status_code=status.HTTP_200_OK,
+    )

@@ -404,3 +404,28 @@ async def db_update_platform_cell_data(
             detail=f'Error while updating `cell_data`',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+async def db_get_platform_last_change_time(
+        platform_id: ObjectId,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': platform_id,
+    }
+    projection = {
+        '_id': 1,
+        'lastChange': 1,
+    }
+    try:
+        result = await collection.find_one(query, projection)
+        return result
+    except PyMongoError as error:
+        logger.error(f'Error while searching in {db_collection}: {error}')
+        raise HTTPException(
+            detail=f'Error while getting `lastChange` time',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
