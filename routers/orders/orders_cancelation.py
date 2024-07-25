@@ -43,11 +43,11 @@ async def orders_cancel_basic_extra_element_moves(
     if source_cell_data['blockedBy'] != order_data['_id']:
         logger.error(f'Corrupted `order` = {order_data['_id']},'
                      f' marking cell {source_row}|{source_col} in `grid` {source_id}.'
-                     f'But different order is blocking it {source_cell_data['lastOrder']}')
+                     f'But different order is blocking it {source_cell_data['blockedBy']}')
         raise HTTPException(
             detail=f'Corrupted `order` = {order_data['_id']},'
                    f' marking cell {source_row}|{source_col} in `grid` {source_id}.'
-                   f'But different order is blocking it {source_cell_data['lastOrder']}',
+                   f'But different order is blocking it {source_cell_data['blockedBy']}',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
     # -2- <- Check source wheelStack it should exist.
@@ -147,11 +147,11 @@ async def orders_cancel_move_wholestack(
     if source_cell_data['blockedBy'] != order_data['_id']:
         logger.error(f'Corrupted `order` = {order_data['_id']},'
                      f' marking cell {source_row}|{source_col} in `grid` {source_id}.'
-                     f'But different order is blocking it {source_cell_data['lastOrder']}')
+                     f'But different order is blocking it {source_cell_data['blockedBy']}')
         raise HTTPException(
             detail=f'Corrupted `order` = {order_data['_id']},'
                    f' marking cell {source_row}|{source_col} in `grid` {source_id}.'
-                   f'But different order is blocking it {source_cell_data['lastOrder']}',
+                   f'But different order is blocking it {source_cell_data['blockedBy']}',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
     # -2- <- Check source `wheelStack` it should exist.
