@@ -20,10 +20,11 @@ async def grid_make_json_friendly(grid_data: dict) -> dict:
             if field['blockedBy'] is not None:
                 field['blockedBy'] = str(field['blockedBy'])
     if 'extra' in grid_data:
-        if 'orders' in grid_data['extra']:
-            orders = grid_data['extra']['orders']
-            for order in orders:
-                orders[order] = str(orders[order])
+        for extra_element in grid_data['extra']:
+            if 'orders' in grid_data['extra'][extra_element]:
+                orders = grid_data['extra'][extra_element]['orders']
+                for order in orders:
+                    orders[order] = str(orders[order])
     return grid_data
 
 

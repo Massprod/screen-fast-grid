@@ -19,10 +19,11 @@ async def platform_make_json_friendly(platform_data):
             if field['blockedBy'] is not None:
                 field['blockedBy'] = str(field['blockedBy'])
     if 'extra' in platform_data:
-        if 'orders' in platform_data['extra']:
-            orders = platform_data['extra']['orders']
-            for order in orders:
-                orders[order] = str(orders[order])
+        for extra_element in platform_data['extra']:
+            if 'orders' in platform_data['extra'][extra_element]:
+                orders = platform_data['extra'][extra_element]['orders']
+                for order in orders:
+                    orders[order] = str(orders[order])
     return platform_data
 
 
@@ -427,5 +428,31 @@ async def db_get_platform_last_change_time(
         logger.error(f'Error while searching in {db_collection}: {error}')
         raise HTTPException(
             detail=f'Error while getting `lastChange` time',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+async def db_update_platform_last_change(
+        platform_id: ObjectId,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': platform_id,
+    }
+    update = {
+        '$set': {
+            'lastChange': await time_w_timezone(),
+        }
+    }
+    try:
+        result = await collection.update_one(query, update)
+        return result
+    except PyMongoError as error:
+        logger.error(f'Error while updating in {db_collection}: {error}')
+        raise HTTPException(
+            detail=f'Error while updating `lastChange` time',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
