@@ -6,7 +6,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from database.mongo_connection import mongo_client
 from fastapi.responses import JSONResponse, Response
 from fastapi import APIRouter, Depends, HTTPException, status, Path, Body
-from constants import DB_PMK_NAME, CLN_WHEELS, PS_BASE_PLATFORM, CLN_WHEELSTACKS
+from constants import DB_PMK_NAME, CLN_WHEELS, PS_BASE_PLATFORM, CLN_WHEELSTACKS, CLN_BASE_PLATFORM
 from .models.response_models import (
                                      update_response_examples,
                                      find_response_examples,
@@ -16,7 +16,7 @@ from .crud import (db_insert_wheel, db_find_wheel,
                    wheel_make_json_friendly, db_find_wheel_by_object_id,
                    db_get_all_wheels)
 from routers.wheelstacks.crud import db_find_wheelstack_by_object_id, db_update_wheelstack
-
+from ..base_platform.crud import db_update_platform_last_change
 
 router = APIRouter()
 
@@ -232,6 +232,9 @@ async def route_create_wheel(
         wheelstack_data['wheels'].append(result.inserted_id)
         await db_update_wheelstack(
             wheelstack_data, wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS
+        )
+        await db_update_platform_last_change(
+            wheelstack_data['placement']['placementId'], db, DB_PMK_NAME, CLN_BASE_PLATFORM,
         )
     cor_data = await wheel_make_json_friendly(cor_data)
     return JSONResponse(
