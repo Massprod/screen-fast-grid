@@ -472,6 +472,10 @@ async def orders_complete_move_to_laboratory(order_data: dict, db: AsyncIOMotorC
     # -4- <- Unblock source cell
     source_cell_data['blockedBy'] = None
     source_cell_data['blocked'] = False
+    # We shouldn't leave empty `wheelStack` placed in the grid.
+    # But we're still leaving it in DB, but the cell should be cleared.
+    if 0 == len(source_wheelstack_data['wheels']):
+        source_cell_data['wheelStack'] = None
     await db_update_grid_cell_data(
         source_id, source_row, source_col, source_cell_data, db, DB_PMK_NAME, CLN_GRID
     )
