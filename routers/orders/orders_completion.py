@@ -476,6 +476,7 @@ async def orders_complete_move_to_laboratory(order_data: dict, db: AsyncIOMotorC
     # But we're still leaving it in DB, but the cell should be cleared.
     if 0 == len(source_wheelstack_data['wheels']):
         source_cell_data['wheelStack'] = None
+        source_wheelstack_data['status'] = PS_SHIPPED
     await db_update_grid_cell_data(
         source_id, source_row, source_col, source_cell_data, db, DB_PMK_NAME, CLN_GRID
     )
