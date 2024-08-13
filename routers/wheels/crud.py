@@ -2,8 +2,8 @@ from loguru import logger
 from bson import ObjectId
 from pymongo.errors import PyMongoError
 from fastapi import HTTPException, status
-from motor.motor_asyncio import AsyncIOMotorClient
-from utility.utilities import get_db_collection
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
+from utility.utilities import get_db_collection, log_db_record
 
 
 async def wheel_make_json_friendly(wheel_data):
@@ -35,10 +35,11 @@ async def db_find_wheel_by_object_id(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
+        session: AsyncIOMotorClientSession = None,
 ):
     try:
         wheel_collection = await get_db_collection(db, db_name, db_collection)
-        res = await wheel_collection.find_one({'_id': wheel_object_id})
+        res = await wheel_collection.find_one({'_id': wheel_object_id}, session=session)
         return res
     except PyMongoError as e:
         logger.error(f"Error finding wheel: {e}")
@@ -51,6 +52,7 @@ async def db_update_wheel_status(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
+        session: AsyncIOMotorClientSession = None
 ):
     wheel_collection = await get_db_collection(db, db_name, db_collection)
     query = {
@@ -62,7 +64,7 @@ async def db_update_wheel_status(
         }
     }
     try:
-        res = await wheel_collection.update_one(query, update)
+        res = await wheel_collection.update_one(query, update, session=session)
         return res
     except PyMongoError as e:
         logger.error(f"Error updating wheel: {e}")
@@ -75,6 +77,7 @@ async def db_update_wheel_position(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
+        session: AsyncIOMotorClientSession,
 ):
     wheel_collection = await get_db_collection(db, db_name, db_collection)
     query = {
@@ -86,7 +89,7 @@ async def db_update_wheel_position(
         }
     }
     try:
-        res = await wheel_collection.update_one(query, update)
+        res = await wheel_collection.update_one(query, update, session=session)
         return res
     except PyMongoError as e:
         logger.error(f"Error updating wheel: {e}")
@@ -99,12 +102,14 @@ async def db_update_wheel(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
+        session: AsyncIOMotorClientSession = None
 ):
     try:
         wheel_collection = await get_db_collection(db, db_name, db_collection)
         res = await wheel_collection.update_one(
             {'_id': wheel_object_id},
-            {'$set': wheel_data}
+            {'$set': wheel_data},
+            session=session,
         )
         return res
     except PyMongoError as e:
@@ -117,10 +122,11 @@ async def db_insert_wheel(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
+        session: AsyncIOMotorClientSession = None,
 ):
     try:
         wheel_collection = await get_db_collection(db, db_name, db_collection)
-        res = await wheel_collection.insert_one(wheel_data)
+        res = await wheel_collection.insert_one(wheel_data, session=session)
         return res
     except PyMongoError as e:
         logger.error(f"Error inserting wheel: {e}")
@@ -143,14 +149,34 @@ async def db_delete_wheel(
 
 
 async def db_get_all_wheels(
+        batch_number: str,
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
 ):
+    collection = await get_db_collection(db, db_name, db_collection)
+    db_log_data = await log_db_record(db_name, db_collection)
+    query = {}
+    if batch_number:
+        query = {
+            'batchNumber': batch_number,
+        }
+        logger.info(
+            f'Searching `wheels` with `batchNumber` = {batch_number}' + db_log_data
+        )
+    else:
+        logger.info(
+            f'Searching all `wheels` in the collection' + db_log_data
+        )
     try:
-        wheel_collection = await get_db_collection(db, db_name, db_collection)
-        res = await wheel_collection.find({}).to_list(length=None)
+        res = await collection.find(query).to_list(length=None)
+        logger.info(
+            f'Successfully found all `wheels`' + db_log_data
+        )
         return res
     except PyMongoError as error:
-        logger.error(f"Error getting all wheels: {error}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database insertion error")
+        logger.error(f"Error getting `wheels` = {error}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database insertion error"
+        )
