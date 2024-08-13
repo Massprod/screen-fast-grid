@@ -33,12 +33,12 @@
       "properties": {
         "type": {
           "bsonType": "string",
-          "enum": ["grid", "basePlatform"],
-          "description": "Destination type (`grid`, `basePlatform`, or `laboratory`), to where we're moving it"
+          "enum": ["grid", "basePlatform", "storage"],
+          "description": "Currently used placement type for the `wheelstack`"
         },
         "placementId": {
           "bsonType": "objectId",
-          "description": "objectId of the placement (we can have multiple `grid`s `basePlatform`s with the same `preset`)"
+          "description": "objectId of the placement (we can have multiple `grid`s `basePlatform`s with the same `preset`), or `storage`"
         }
       }
     },
@@ -84,7 +84,7 @@
     },
     "status": {
       "bsonType": "string",
-      "enum": ["laboratory", "shipped", "grid", "basePlatform", "rejected"],
+      "enum": ["laboratory", "shipped", "grid", "basePlatform", "rejected", "storage"],
       "description": "must be a string and is required"
     }
   },

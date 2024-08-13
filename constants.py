@@ -6,6 +6,7 @@ ORDER_MOVE_TO_LABORATORY: str = 'moveToLaboratory'
 ORDER_MERGE_WHEEL_STACKS: str = 'mergeWheelstacks'
 ORDER_MOVE_TO_PROCESSING: str = 'moveToProcessing'
 ORDER_MOVE_TO_REJECTED: str = 'moveToRejected'
+ORDER_MOVE_TO_STORAGE: str = 'moveToStorage'
 
 # Order statuses ENUM.
 ORDER_STATUS_COMPLETED: str = 'completed'
@@ -16,7 +17,8 @@ ORDER_STATUS_PENDING: str = 'pending'
 BASIC_EXTRA_MOVES: set[str] = {
     ORDER_MOVE_TO_LABORATORY,
     ORDER_MOVE_TO_REJECTED,
-    ORDER_MOVE_TO_PROCESSING
+    ORDER_MOVE_TO_PROCESSING,
+    ORDER_MOVE_TO_STORAGE,
 }
 
 # DB names
@@ -31,6 +33,7 @@ CLN_GRID: str = 'grid'
 CLN_WHEELSTACKS: str = 'wheelStacks'
 CLN_WHEELS: str = 'wheels'
 CLN_PRESETS: str = 'presets'
+CLN_BATCH_NUMBERS: str = 'batchNumbers'
 # PRESETS
 PRES_PMK_GRID: str = 'pmkGrid'
 PRES_PMK_PLATFORM: str = 'pmkBasePlatform'
@@ -38,10 +41,12 @@ PRES_PMK_PLATFORM: str = 'pmkBasePlatform'
 # PRESET TYPES
 PRES_TYPE_GRID: str = 'grid'
 PRES_TYPE_PLATFORM: str = 'basePlatform'
+PRES_TYPE_STORAGE: str = 'storage'
 
 # EXTRA ELEMENT TYPES
 EE_GRID_ROW_NAME: str = 'extra'
 EE_HAND_CRANE: str = 'handCrane'
+EE_LABORATORY: str = 'laboratory'
 
 # FOLDERS
 FLD_BASIC_SCHEMAS: str = 'database/collections/schemas'
@@ -52,7 +57,7 @@ PS_SHIPPED: str = 'shipped'
 PS_GRID: str = 'grid'
 PS_BASE_PLATFORM: str = 'basePlatform'
 PS_REJECTED: str = 'rejected'
-
+PS_STORAGE: str = 'storage'
 
 # WHEELSTACKS LIMIT
 WS_MIN_WHEELS: int = 0

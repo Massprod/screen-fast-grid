@@ -4,7 +4,13 @@ from loguru import logger
 from dotenv import load_dotenv
 
 
-def create_connection_string(login: str = '', password: str = '', server: str = '') -> str:
+def create_connection_string(
+        login: str = '',
+        password: str = '',
+        server: str = '',
+        replica_name: str = '',
+        direct_connection: bool = True,
+) -> str:
     """
     Creates a MongoDB connection string using provided credentials or environment variables.
 
@@ -12,7 +18,7 @@ def create_connection_string(login: str = '', password: str = '', server: str = 
         login (str): MongoDB login username. Defaults to an empty string.
         password (str): MongoDB login password. Defaults to an empty string.
         server (str): MongoDB server address. Defaults to an empty string.
-
+        replica_name (str): MongoDB replica name. Default to an empty string.
     Returns:
         str: The MongoDB connection string.
 
@@ -23,9 +29,14 @@ def create_connection_string(login: str = '', password: str = '', server: str = 
         login = login or getenv('login')
         password = password or getenv('password')
         server = server or getenv('server')
-        if not all([login, password, server]):
+        replica_name = replica_name or getenv('replica_name')
+        if not all([login, password, server, replica_name]):
             raise ValueError('Missing required database credentials')
-        con_string = f'mongodb://{login}:{password}@{server}'
+        con_string = f'mongodb://{login}:{password}@{server}/?'
+        if replica_name:
+            con_string += f'replicaSet={replica_name}'
+        if direct_connection:
+            con_string += '&directConnection=true'
         return con_string
     except Exception as e:
         logger.info(f"Error creating connection string: {e}")

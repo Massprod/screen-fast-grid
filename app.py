@@ -11,6 +11,7 @@ from routers.presets.router import router as presets_router
 from routers.base_platform.router import router as platform_router
 from routers.wheelstacks.router import router as wheelstack_router
 from routers.presets.crud import add_new_preset, get_preset_by_name
+from routers.batch_numbers.router import router as batch_numbers_router
 from database.collections.collections import create_basic_collections
 from constants import PRES_PMK_GRID, PRES_PMK_PLATFORM, DB_PMK_NAME, CLN_PRESETS
 from database.presets.presets import create_pmk_grid_preset, create_pmk_platform_preset
@@ -59,6 +60,7 @@ app = FastAPI(
 # TODO: Change middleware after we actually complete project.
 #  we should change `origins` to the server addresses we want to allow connections.
 origins = [
+    "http://localhost:5500",
     "http://127.0.0.1:5500",
     "http://localhost:5500",
 ]
@@ -66,15 +68,16 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # Allow specific origins, from which we allow connections.
+    allow_origins=['*'],
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods (GET, POST, PUT, DELETE, etc.)
-    allow_headers=["*"],  # Allow all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(presets_router, prefix='/presets', tags=['Preset'])
 app.include_router(grid_router, prefix='/grid', tags=['Grid'])
 app.include_router(platform_router, prefix='/platform', tags=['Platform'])
+app.include_router(batch_numbers_router, prefix='/batch_number', tags=['Batch'])
 app.include_router(wheel_router, prefix='/wheels', tags=['Wheels'])
 app.include_router(wheelstack_router, prefix='/wheelstacks', tags=['WheelStack'])
 app.include_router(orders_router, prefix='/orders', tags=['Orders'])

@@ -1,0 +1,36 @@
+{
+  "bsonType": "object",
+  "required": [
+    "createdAt",
+    "batchNumber",
+    "laboratoryPassed",
+    "laboratoryTestDate"
+  ],
+  "properties": {
+    "_id": {
+      "bsonType": "objectId",
+      "description": "Unique identifier for the order"
+    },
+    "createdAt": {
+      "bsonType": "date",
+      "description": "Date of creation"
+    },
+    "batchNumber": {
+      "bsonType": "string",
+      "description": "Unique ID of the batch"
+    },
+    "laboratoryPassed": {
+      "bsonType": "bool",
+      "description": "Laboratory tests are passed correctly"
+    },
+    "laboratoryTestDate": {
+      "bsonType": ["date", "null"],
+      "description": "Latest Timestamp of conducted test"
+    }
+  },
+    "indexes": [
+      {"keys": { "createdAt": -1 }, "options": { "name": "createdAt_desc_index" } },
+      { "keys": { "batchNumber": 1 }, "options": {"unique": true, "name": "indexing by `batchId`" } },
+      { "keys": { "batchNumber": 1,  "laboratoryPassed": 1, "laboratoryTestDate": 1 }, "options": { "name": "indexing by all"} }
+    ]
+}

@@ -58,13 +58,18 @@ async def create_pmk_grid_preset() -> dict:
     # Creating them as a separate elements
     preset['extra'] = {}
     for _ in range(1, 4):
-        element = f'vic{_}'
         preset['extra'][f'vic{_}'] = {
             'type': EE_HAND_CRANE,
             'id': f'crane_vic{_}',
             'orders': {},
             'blocked': False,
         }
+    preset['extra']['laboratory'] = {
+        'type': 'laboratory',
+        'id': 'laboratory',
+        'order': {},
+        'blocked': False,
+    }
     return preset
 
 
