@@ -10,11 +10,12 @@ from routers.wheelstacks.crud import db_find_wheelstack_by_object_id, db_update_
 from routers.base_platform.crud import db_get_platform_cell_data, db_update_platform_cell_data
 from routers.wheels.crud import db_find_wheel_by_object_id
 from constants import (PRES_TYPE_GRID, PRES_TYPE_PLATFORM,
-                       DB_PMK_NAME, CLN_GRID,
+                       DB_PMK_NAME, CLN_GRID, CLN_BATCH_NUMBERS,
                        CLN_WHEELSTACKS, CLN_BASE_PLATFORM,
                        ORDER_STATUS_PENDING, CLN_ACTIVE_ORDERS,
-                       EE_HAND_CRANE, EE_GRID_ROW_NAME, CLN_WHEELS,
+                       EE_HAND_CRANE, EE_GRID_ROW_NAME, CLN_WHEELS, EE_LABORATORY,
                        ORDER_MOVE_TO_LABORATORY, ORDER_MOVE_TO_PROCESSING, ORDER_MOVE_TO_REJECTED)
+from routers.batch_numbers.crud import db_find_batch_number
 
 
 async def orders_create_move_whole_wheelstack(db: AsyncIOMotorClient, order_data: dict) -> ObjectId:
@@ -121,43 +122,48 @@ async def orders_create_move_whole_wheelstack(db: AsyncIOMotorClient, order_data
         'destination': [],
     }
     order_data['status'] = ORDER_STATUS_PENDING
-    created_order = await db_create_order(order_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS)
-    created_order_id: ObjectId = created_order.inserted_id
-    # Order Creation ---
-    # We need to change in SOURCE:
-    #  1. SourceCell should be `blocked` and `order` `objectId` placed in `blockedBy`.
-    #  2. SourceWheelstack should be `blocked` and `order` `objectId` placed in `blockedBy`
-    # +++ Source Change
-    new_source_cell_data = {
-        'wheelStack': source_wheelstack_data['_id'],
-        'blocked': True,
-        'blockedBy': created_order_id,
-    }
-    if PRES_TYPE_GRID == source_type:
-        await db_update_grid_cell_data(
-            source_id, source_row, source_col, new_source_cell_data, db, DB_PMK_NAME, CLN_GRID
-        )
-    elif PRES_TYPE_PLATFORM == source_type:
-        await db_update_platform_cell_data(
-            source_id, source_row, source_col, new_source_cell_data, db, DB_PMK_NAME, CLN_BASE_PLATFORM
-        )
-    source_wheelstack_data['blocked'] = True
-    source_wheelstack_data['lastOrder'] = created_order_id
-    await db_update_wheelstack(
-        source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS
-    )
-    # Source Change ---
-    # We need to change in DESTINATION:
-    #  1. DestinationCell should be `blocked` and `order` `objectId` placed in `blockedBy`.
-    # +++ Destination change
-    destination_cell_data['wheelStack'] = None
-    destination_cell_data['blocked'] = True
-    destination_cell_data['blockedBy'] = created_order_id
-    await db_update_grid_cell_data(
-        destination_id, destination_row, destination_col, destination_cell_data, db, DB_PMK_NAME, CLN_GRID
-    )
-    # Destination change ---
-    return created_order_id
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            created_order = await db_create_order(order_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session)
+            created_order_id: ObjectId = created_order.inserted_id
+            # Order Creation ---
+            # We need to change in SOURCE:
+            #  1. SourceCell should be `blocked` and `order` `objectId` placed in `blockedBy`.
+            #  2. SourceWheelstack should be `blocked` and `order` `objectId` placed in `blockedBy`
+            # +++ Source Change
+            new_source_cell_data = {
+                'wheelStack': source_wheelstack_data['_id'],
+                'blocked': True,
+                'blockedBy': created_order_id,
+            }
+            if PRES_TYPE_GRID == source_type:
+                await db_update_grid_cell_data(
+                    source_id, source_row, source_col, new_source_cell_data,
+                    db, DB_PMK_NAME, CLN_GRID, session, False
+                )
+            elif PRES_TYPE_PLATFORM == source_type:
+                await db_update_platform_cell_data(
+                    source_id, source_row, source_col, new_source_cell_data,
+                    db, DB_PMK_NAME, CLN_BASE_PLATFORM, session, True
+                )
+            source_wheelstack_data['blocked'] = True
+            source_wheelstack_data['lastOrder'] = created_order_id
+            await db_update_wheelstack(
+                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            )
+            # Source Change ---
+            # We need to change in DESTINATION:
+            #  1. DestinationCell should be `blocked` and `order` `objectId` placed in `blockedBy`.
+            # +++ Destination change
+            destination_cell_data['wheelStack'] = None
+            destination_cell_data['blocked'] = True
+            destination_cell_data['blockedBy'] = created_order_id
+            await db_update_grid_cell_data(
+                destination_id, destination_row, destination_col,
+                destination_cell_data, db, DB_PMK_NAME, CLN_GRID, session, True
+            )
+            # Destination change ---
+            return created_order_id
 
 
 async def orders_create_move_to_laboratory(db: AsyncIOMotorClient, order_data: dict) -> ObjectId:
@@ -257,7 +263,7 @@ async def orders_create_move_to_laboratory(db: AsyncIOMotorClient, order_data: d
             detail=f'Extra element = {extra_name} extra element is `blocked`',
             status_code=status.HTTP_403_FORBIDDEN,
         )
-    if destination_cell_data['type'] != EE_HAND_CRANE:
+    if destination_cell_data['type'] != EE_LABORATORY:
         raise HTTPException(
             detail=f'Extra element = {extra_name} chosen extra element of incorrect type.',
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -288,31 +294,35 @@ async def orders_create_move_to_laboratory(db: AsyncIOMotorClient, order_data: d
         'status': ORDER_STATUS_PENDING,
         'orderType': ORDER_MOVE_TO_LABORATORY,
     }
-    created_order = await db_create_order(cor_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS)
-    created_order_id = created_order.inserted_id
-    # Order Creation ---
-    # SOURCE change:
-    #  1. Block SOURCE cell and `wheelStack` on it.
-    new_source_cell_data = {
-        'wheelStack': source_wheelstack_data['_id'],
-        'blocked': True,
-        'blockedBy': created_order_id,
-    }
-    await db_update_grid_cell_data(
-        source_id, source_row, source_col, new_source_cell_data, db, DB_PMK_NAME, CLN_GRID
-    )
-    source_wheelstack_data['blocked'] = True
-    source_wheelstack_data['lastOrder'] = created_order_id
-    await db_update_wheelstack(
-        source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS
-    )
-    # DESTINATION change:
-    #  1. ADD created order into `extra` element `orders`.
-    destination_cell_data['orders'][str(created_order_id)] = created_order_id
-    await db_update_extra_cell_data(
-        destination_id, extra_name, destination_cell_data, db, DB_PMK_NAME, CLN_GRID
-    )
-    return created_order_id
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            created_order = await db_create_order(cor_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session)
+            created_order_id = created_order.inserted_id
+            # Order Creation ---
+            # SOURCE change:
+            #  1. Block SOURCE cell and `wheelStack` on it.
+            new_source_cell_data = {
+                'wheelStack': source_wheelstack_data['_id'],
+                'blocked': True,
+                'blockedBy': created_order_id,
+            }
+            await db_update_grid_cell_data(
+                source_id, source_row, source_col, new_source_cell_data,
+                db, DB_PMK_NAME, CLN_GRID, session, False
+            )
+            source_wheelstack_data['blocked'] = True
+            source_wheelstack_data['lastOrder'] = created_order_id
+            await db_update_wheelstack(
+                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            )
+            # DESTINATION change:
+            #  1. ADD created order into `extra` element `orders`.
+            destination_cell_data['orders'][str(created_order_id)] = created_order_id
+            await db_update_extra_cell_data(
+                destination_id, extra_name, destination_cell_data,
+                db, DB_PMK_NAME, CLN_GRID, session, True
+            )
+            return created_order_id
 
 
 async def orders_create_move_to_processing(db: AsyncIOMotorClient, order_data: dict) -> ObjectId:
@@ -370,6 +380,21 @@ async def orders_create_move_to_processing(db: AsyncIOMotorClient, order_data: d
             detail=f'Source cell `wheelStack` blocked by other order = {source_wheelstack_data['lastOrder']}',
             status_code=status.HTTP_403_FORBIDDEN,
         )
+    batch_number_data = await db_find_batch_number(
+        source_wheelstack_data['batchNumber'], db, DB_PMK_NAME, CLN_BATCH_NUMBERS
+    )
+    if batch_number_data is None:
+        logger.error(f'Attempt to use non existing `batchNumber` = {source_wheelstack_data['batchNumber']}')
+        raise HTTPException(
+            detail=f'Provided `batchNumber` doesnt exist',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    if not batch_number_data['laboratoryPassed']:
+        logger.error(f'Attempt to move not tested `wheelstack` = {source_wheelstack_data['_id']}')
+        raise HTTPException(
+            detail="`wheelstack` didn't passed the tests",
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
     # DESTINATION:
     #  Destination can only be one of the `extra` elements of the `grid`.
     #  `rowPlacement` == `extra`, `columnPlacement` == name of the `extra` element
@@ -422,31 +447,34 @@ async def orders_create_move_to_processing(db: AsyncIOMotorClient, order_data: d
         'status': ORDER_STATUS_PENDING,
         'orderType': ORDER_MOVE_TO_PROCESSING,
     }
-    created_order = await db_create_order(cor_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS)
-    created_order_id = created_order.inserted_id
-    # Order creation ---
-    # SOURCE change:
-    #  1. Block SOURCE cell and `wheelStack` on it.
-    new_source_cell_data = {
-        'wheelStack': source_wheelstack_data['_id'],
-        'blocked': True,
-        'blockedBy': created_order_id,
-    }
-    await db_update_grid_cell_data(
-        source_id, source_row, source_col, new_source_cell_data, db, DB_PMK_NAME, CLN_GRID
-    )
-    source_wheelstack_data['blocked'] = True
-    source_wheelstack_data['lastOrder'] = created_order_id
-    await db_update_wheelstack(
-        source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS
-    )
-    # DESTINATION change:
-    #  1. ADD created order into `extra` element `orders`.
-    destination_cell_data['orders'][str(created_order_id)] = created_order_id
-    await db_update_extra_cell_data(
-        destination_id, extra_name, destination_cell_data, db, DB_PMK_NAME, CLN_GRID
-    )
-    return created_order_id
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            created_order = await db_create_order(cor_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session)
+            created_order_id = created_order.inserted_id
+            # Order creation ---
+            # SOURCE change:
+            #  1. Block SOURCE cell and `wheelStack` on it.
+            new_source_cell_data = {
+                'wheelStack': source_wheelstack_data['_id'],
+                'blocked': True,
+                'blockedBy': created_order_id,
+            }
+            await db_update_grid_cell_data(
+                source_id, source_row, source_col, new_source_cell_data,
+                db, DB_PMK_NAME, CLN_GRID, session, False
+            )
+            source_wheelstack_data['blocked'] = True
+            source_wheelstack_data['lastOrder'] = created_order_id
+            await db_update_wheelstack(
+                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            )
+            # DESTINATION change:
+            #  1. ADD created order into `extra` element `orders`.
+            destination_cell_data['orders'][str(created_order_id)] = created_order_id
+            await db_update_extra_cell_data(
+                destination_id, extra_name, destination_cell_data, db, DB_PMK_NAME, CLN_GRID, session, True
+            )
+            return created_order_id
 
 
 async def orders_create_move_to_rejected(db: AsyncIOMotorClient, order_data: dict) -> ObjectId:
@@ -504,6 +532,20 @@ async def orders_create_move_to_rejected(db: AsyncIOMotorClient, order_data: dic
             detail=f'Source cell `wheelStack` blocked by other order = {source_wheelstack_data['lastOrder']}',
             status_code=status.HTTP_403_FORBIDDEN,
         )
+    batch_number_data = await db_find_batch_number(
+        source_wheelstack_data['batchNumber'], db, DB_PMK_NAME, CLN_BATCH_NUMBERS
+    )
+    if batch_number_data is None:
+        logger.error(f'Attempt to use non existing `batchNumber` = {source_wheelstack_data['batchNumber']}')
+        raise HTTPException(
+            detail=f'Provided `batchNumber` doesnt exist',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    if batch_number_data['laboratoryTestDate'] is None:
+        raise HTTPException(
+            detail='`wheelstack` not tested',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
     # DESTINATION:
     #  Destination can only be one of the `extra` elements of the `grid`.
     #  `rowPlacement` == `extra`, `columnPlacement` == name of the `extra` element
@@ -556,28 +598,32 @@ async def orders_create_move_to_rejected(db: AsyncIOMotorClient, order_data: dic
         'status': ORDER_STATUS_PENDING,
         'orderType': ORDER_MOVE_TO_REJECTED,
     }
-    created_order = await db_create_order(cor_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS)
-    created_order_id = created_order.inserted_id
-    # Order creation ---
-    # SOURCE change:
-    #  1. Block SOURCE cell and `wheelStack` on it.
-    new_source_cell_data = {
-        'wheelStack': source_wheelstack_data['_id'],
-        'blocked': True,
-        'blockedBy': created_order_id,
-    }
-    await db_update_grid_cell_data(
-        source_id, source_row, source_col, new_source_cell_data, db, DB_PMK_NAME, CLN_GRID
-    )
-    source_wheelstack_data['blocked'] = True
-    source_wheelstack_data['lastOrder'] = created_order_id
-    await db_update_wheelstack(
-        source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS
-    )
-    # DESTINATION change:
-    #  1. ADD created order into `extra` element `orders`.
-    destination_cell_data['orders'][str(created_order_id)] = created_order_id
-    await db_update_extra_cell_data(
-        destination_id, extra_name, destination_cell_data, db, DB_PMK_NAME, CLN_GRID
-    )
-    return created_order_id
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            created_order = await db_create_order(cor_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session)
+            created_order_id = created_order.inserted_id
+            # Order creation ---
+            # SOURCE change:
+            #  1. Block SOURCE cell and `wheelStack` on it.
+            new_source_cell_data = {
+                'wheelStack': source_wheelstack_data['_id'],
+                'blocked': True,
+                'blockedBy': created_order_id,
+            }
+            await db_update_grid_cell_data(
+                source_id, source_row, source_col, new_source_cell_data,
+                db, DB_PMK_NAME, CLN_GRID, session, False
+            )
+            source_wheelstack_data['blocked'] = True
+            source_wheelstack_data['lastOrder'] = created_order_id
+            await db_update_wheelstack(
+                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            )
+            # DESTINATION change:
+            #  1. ADD created order into `extra` element `orders`.
+            destination_cell_data['orders'][str(created_order_id)] = created_order_id
+            await db_update_extra_cell_data(
+                destination_id, extra_name, destination_cell_data,
+                db, DB_PMK_NAME, CLN_GRID, session, True
+            )
+            return created_order_id

@@ -354,6 +354,8 @@ async def db_update_grid_cell_data(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
+        session: AsyncIOMotorClientSession = None,
+        record_change: bool = True,
 ):
     collection = await get_db_collection(db, db_name, db_collection)
     query = {
@@ -367,11 +369,12 @@ async def db_update_grid_cell_data(
             f'rows.{row}.columns.{col}.wheelStack': new_data['wheelStack'],
             f'rows.{row}.columns.{col}.blocked': new_data['blocked'],
             f'rows.{row}.columns.{col}.blockedBy': new_data['blockedBy'],
-            'lastChange': await time_w_timezone(),
         }
     }
+    if record_change:
+        update['$set']['lastChange'] = await time_w_timezone()
     try:
-        result = await collection.update_one(query, update)
+        result = await collection.update_one(query, update, session=session)
         return result
     except PyMongoError as error:
         logger.error(f'Error while updating `cell_data` in {db_collection}: {error}')
@@ -417,6 +420,8 @@ async def db_update_extra_cell_data(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
+        session: AsyncIOMotorClientSession = None,
+        record_change: bool = True,
 ):
     collection = await get_db_collection(db, db_name, db_collection)
     query = {
@@ -428,11 +433,12 @@ async def db_update_extra_cell_data(
     update = {
         '$set': {
             f'extra.{extra_element_name}': new_data,
-            'lastChange': await time_w_timezone(),
         }
     }
+    if record_change:
+        update['$set']['lastChange'] = await time_w_timezone()
     try:
-        result = await collection.update_one(query, update)
+        result = await collection.update_one(query, update, session=session)
         return result
     except PyMongoError as error:
         logger.error(f'Error while updating extra `cell_data` in {db_collection}: {error}')
@@ -449,6 +455,8 @@ async def db_delete_extra_cell_order(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
+        session: AsyncIOMotorClientSession = None,
+        record_change: bool = True
 ):
     collection = await get_db_collection(db, db_name, db_collection)
     query = {
@@ -461,12 +469,13 @@ async def db_delete_extra_cell_order(
         '$unset': {
             f'extra.{extra_element_name}.orders.{str(order_object_id)}': 1
         },
-        '$set': {
-            'lastChange': await time_w_timezone(),
-        }
     }
+    if record_change:
+        update['$set'] = {
+            'lastChange': await time_w_timezone()
+        }
     try:
-        result = await collection.update_one(query, update)
+        result = await collection.update_one(query, update, session=session)
         return result
     except PyMongoError as error:
         logger.error(f'Error while updating extra `cell_data` in {db_collection}: {error}')

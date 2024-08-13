@@ -84,35 +84,36 @@ async def orders_cancel_basic_extra_element_moves(
     # -4- <- Unblock source
     source_cell_data['blocked'] = False
     source_cell_data['blockedBy'] = None
-    # TODO: Search for transactions in MongoDB, and change all write operations.
-    #  We should always update and create with transactions, when it's multiple documents.
-    await db_update_grid_cell_data(
-        source_id, source_row, source_col, source_cell_data, db, DB_PMK_NAME, CLN_GRID
-    )
-    # -5- <- Delete order from destination extra element
-    await db_delete_extra_cell_order(
-        dest_id, dest_element_name, order_data['_id'], db, DB_PMK_NAME, CLN_GRID
-    )
-    # -6- <- Unblock `wheelStack` and update `lastOrder`.
-    source_wheelstack_data['blocked'] = False
-    source_wheelstack_data['lastOrder'] = order_data['_id']
-    await db_update_wheelstack(
-        source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS
-    )
-    # -7- Delete order from `activeOrders`
-    await db_delete_order(
-        order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS
-    )
-    # -8- Add order into `canceledOrders`
-    cancellation_time = await time_w_timezone()
-    order_data['status'] = ORDER_STATUS_CANCELED
-    order_data['cancellationReason'] = cancellation_reason if cancellation_reason else 'Not specified'
-    order_data['canceledAt'] = cancellation_time
-    order_data['lastUpdated'] = cancellation_time
-    canceled_order = await db_create_order(
-        order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS
-    )
-    return canceled_order.inserted_id
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            await db_update_grid_cell_data(
+                source_id, source_row, source_col, source_cell_data,
+                db, DB_PMK_NAME, CLN_GRID, session, True
+            )
+            # -5- <- Delete order from destination extra element
+            await db_delete_extra_cell_order(
+                dest_id, dest_element_name, order_data['_id'], db, DB_PMK_NAME, CLN_GRID, session
+            )
+            # -6- <- Unblock `wheelStack` and update `lastOrder`.
+            source_wheelstack_data['blocked'] = False
+            source_wheelstack_data['lastOrder'] = order_data['_id']
+            await db_update_wheelstack(
+                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            )
+            # -7- Delete order from `activeOrders`
+            await db_delete_order(
+                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            )
+            # -8- Add order into `canceledOrders`
+            cancellation_time = await time_w_timezone()
+            order_data['status'] = ORDER_STATUS_CANCELED
+            order_data['cancellationReason'] = cancellation_reason if cancellation_reason else 'Not specified'
+            order_data['canceledAt'] = cancellation_time
+            order_data['lastUpdated'] = cancellation_time
+            canceled_order = await db_create_order(
+                order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS, session
+            )
+            return canceled_order.inserted_id
 
 
 async def orders_cancel_move_wholestack(
@@ -200,37 +201,42 @@ async def orders_cancel_move_wholestack(
     # -4- Unblock source
     source_cell_data['blocked'] = False
     source_cell_data['blockedBy'] = None
-    if PRES_TYPE_GRID == source_type:
-        await db_update_grid_cell_data(
-            source_id, source_row, source_col, source_cell_data, db, DB_PMK_NAME, CLN_GRID
-        )
-    elif PRES_TYPE_PLATFORM == source_type:
-        await db_update_platform_cell_data(
-            source_id, source_row, source_col, source_cell_data, db, DB_PMK_NAME, CLN_BASE_PLATFORM
-        )
-    # -5- Unblock destination
-    destination_cell_data['blocked'] = False
-    destination_cell_data['blockedBy'] = None
-    await db_update_grid_cell_data(
-        dest_id, dest_row, dest_col, destination_cell_data, db, DB_PMK_NAME, CLN_GRID
-    )
-    # -6- Unblock Source `wheelStack`
-    source_wheelstack_data['blocked'] = False
-    source_wheelstack_data['lastOrder'] = order_data['_id']
-    await db_update_wheelstack(
-        source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS
-    )
-    # -7- Delete order from `activeOrders`
-    await db_delete_order(
-        order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS
-    )
-    # -7- Add order into `canceledOrders`
-    cancellation_time = await time_w_timezone()
-    order_data['status'] = ORDER_STATUS_CANCELED
-    order_data['cancellationReason'] = cancellation_reason if cancellation_reason else 'Not specified'
-    order_data['canceledAt'] = cancellation_time
-    order_data['lastUpdated'] = cancellation_time
-    canceled_order = await db_create_order(
-        order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS
-    )
-    return canceled_order.inserted_id
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            if PRES_TYPE_GRID == source_type:
+                await db_update_grid_cell_data(
+                    source_id, source_row, source_col, source_cell_data,
+                    db, DB_PMK_NAME, CLN_GRID, session, False
+                )
+            elif PRES_TYPE_PLATFORM == source_type:
+                await db_update_platform_cell_data(
+                    source_id, source_row, source_col, source_cell_data,
+                    db, DB_PMK_NAME, CLN_BASE_PLATFORM, session
+                )
+            # -5- Unblock destination
+            destination_cell_data['blocked'] = False
+            destination_cell_data['blockedBy'] = None
+            await db_update_grid_cell_data(
+                dest_id, dest_row, dest_col, destination_cell_data,
+                db, DB_PMK_NAME, CLN_GRID, session, True
+            )
+            # -6- Unblock Source `wheelStack`
+            source_wheelstack_data['blocked'] = False
+            source_wheelstack_data['lastOrder'] = order_data['_id']
+            await db_update_wheelstack(
+                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            )
+            # -7- Delete order from `activeOrders`
+            await db_delete_order(
+                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            )
+            # -7- Add order into `canceledOrders`
+            cancellation_time = await time_w_timezone()
+            order_data['status'] = ORDER_STATUS_CANCELED
+            order_data['cancellationReason'] = cancellation_reason if cancellation_reason else 'Not specified'
+            order_data['canceledAt'] = cancellation_time
+            order_data['lastUpdated'] = cancellation_time
+            canceled_order = await db_create_order(
+                order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS, session
+            )
+            return canceled_order.inserted_id

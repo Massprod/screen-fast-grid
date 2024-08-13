@@ -73,10 +73,11 @@ async def db_create_order(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
+        session: AsyncIOMotorClientSession = None,
 ):
     try:
         collection = await get_db_collection(db, db_name, db_collection)
-        res = await collection.insert_one(order_data)
+        res = await collection.insert_one(order_data, session=session)
         return res
     except PyMongoError as e:
         logger.error(f"Error creating Order: {e}")
@@ -122,10 +123,11 @@ async def db_delete_order(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
+        session: AsyncIOMotorClientSession = None
 ):
     try:
         collection = await get_db_collection(db, db_name, db_collection)
-        res = await collection.delete_one({'_id': order_object_id})
+        res = await collection.delete_one({'_id': order_object_id}, session=session)
         return res
     except PyMongoError as e:
         logger.error(f"Error deleting Order: {e}")

@@ -2,7 +2,7 @@ from bson import ObjectId
 from loguru import logger
 from pymongo.errors import PyMongoError
 from fastapi import status, HTTPException
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
 from utility.utilities import get_db_collection, time_w_timezone, log_db_record
 
 
@@ -379,7 +379,9 @@ async def db_update_platform_cell_data(
         new_data: dict,
         db: AsyncIOMotorClient,
         db_name: str,
-        db_collection: str
+        db_collection: str,
+        session: AsyncIOMotorClientSession = None,
+        record_change: bool = True,
 ):
     collection = await get_db_collection(db, db_name, db_collection)
     query = {
@@ -393,11 +395,12 @@ async def db_update_platform_cell_data(
             f'rows.{row}.columns.{col}.wheelStack': new_data['wheelStack'],
             f'rows.{row}.columns.{col}.blocked': new_data['blocked'],
             f'rows.{row}.columns.{col}.blockedBy': new_data['blockedBy'],
-            'lastChange': await time_w_timezone(),
         }
     }
+    if record_change:
+        update['$set']['lastChange'] = await time_w_timezone(),
     try:
-        result = await collection.update_one(query, update)
+        result = await collection.update_one(query, update, session=session)
         return result
     except PyMongoError as error:
         logger.error(f'Error while updating `cell_data` in {db_collection}: {error}')
@@ -437,6 +440,7 @@ async def db_update_platform_last_change(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
+        session=None,
 ):
     collection = await get_db_collection(db, db_name, db_collection)
     query = {
@@ -448,7 +452,7 @@ async def db_update_platform_last_change(
         }
     }
     try:
-        result = await collection.update_one(query, update)
+        result = await collection.update_one(query, update, session=session)
         return result
     except PyMongoError as error:
         logger.error(f'Error while updating in {db_collection}: {error}')

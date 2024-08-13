@@ -103,51 +103,56 @@ async def orders_complete_move_wholestack(order_data: dict, db: AsyncIOMotorClie
     source_cell_data['blocked'] = False
     source_cell_data['blockedBy'] = None
     source_cell_data['wheelStack'] = None
-    if PRES_TYPE_GRID == source_type:
-        await db_update_grid_cell_data(
-            source_id, source_row, source_col, source_cell_data, db, DB_PMK_NAME, CLN_GRID
-        )
-    elif PRES_TYPE_PLATFORM == source_type:
-        await db_update_platform_cell_data(
-            source_id, source_row, source_col, source_cell_data, db, DB_PMK_NAME, CLN_BASE_PLATFORM
-        )
-    # -5- <- Transfer `wheelStack` on destination cell
-    destination_cell_data['blocked'] = False
-    destination_cell_data['blockedBy'] = None
-    destination_cell_data['wheelStack'] = source_wheelstack_data['_id']
-    await db_update_grid_cell_data(
-        dest_id, dest_row, dest_col, destination_cell_data, db, DB_PMK_NAME, CLN_GRID
-    )
-    # -6- <- Unblock `wheelStack`
-    source_wheelstack_data['placement']['type'] = dest_type
-    source_wheelstack_data['placement']['placementId'] = dest_id
-    source_wheelstack_data['rowPlacement'] = dest_row
-    source_wheelstack_data['colPlacement'] = dest_col
-    source_wheelstack_data['lastOrder'] = order_data['_id']
-    source_wheelstack_data['blocked'] = False
-    # `moveWholeStack` only for `grid` -> `grid` or `basePlatform` -> `grid`.
-    source_wheelstack_data['status'] = PS_GRID
-    await db_update_wheelstack(
-        source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS
-    )
-    # -7- Update status of every affected wheel
-    for wheel in order_data['affectedWheels']['source']:
-        await db_update_wheel_status(
-            wheel, PS_GRID, db, DB_PMK_NAME, CLN_WHEELS
-        )
-    # -8- Delete order from `activeOrders`
-    await db_delete_order(
-        order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS
-    )
-    # -9- Add order into `completedOrders`
-    completion_time = await time_w_timezone()
-    order_data['status'] = ORDER_STATUS_COMPLETED
-    order_data['lastUpdated'] = completion_time
-    order_data['completedAt'] = completion_time
-    completed_order = await db_create_order(
-        order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS
-    )
-    return completed_order.inserted_id
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            if PRES_TYPE_GRID == source_type:
+                await db_update_grid_cell_data(
+                    source_id, source_row, source_col, source_cell_data,
+                    db, DB_PMK_NAME, CLN_GRID, session, False
+                )
+            elif PRES_TYPE_PLATFORM == source_type:
+                await db_update_platform_cell_data(
+                    source_id, source_row, source_col, source_cell_data,
+                    db, DB_PMK_NAME, CLN_BASE_PLATFORM, session
+                )
+            # -5- <- Transfer `wheelStack` on destination cell
+            destination_cell_data['blocked'] = False
+            destination_cell_data['blockedBy'] = None
+            destination_cell_data['wheelStack'] = source_wheelstack_data['_id']
+            await db_update_grid_cell_data(
+                dest_id, dest_row, dest_col, destination_cell_data,
+                db, DB_PMK_NAME, CLN_GRID, session, True
+            )
+            # -6- <- Unblock `wheelStack`
+            source_wheelstack_data['placement']['type'] = dest_type
+            source_wheelstack_data['placement']['placementId'] = dest_id
+            source_wheelstack_data['rowPlacement'] = dest_row
+            source_wheelstack_data['colPlacement'] = dest_col
+            source_wheelstack_data['lastOrder'] = order_data['_id']
+            source_wheelstack_data['blocked'] = False
+            # `moveWholeStack` only for `grid` -> `grid` or `basePlatform` -> `grid`.
+            source_wheelstack_data['status'] = PS_GRID
+            await db_update_wheelstack(
+                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            )
+            # -7- Update status of every affected wheel
+            for wheel in order_data['affectedWheels']['source']:
+                await db_update_wheel_status(
+                    wheel, PS_GRID, db, DB_PMK_NAME, CLN_WHEELS, session
+                )
+            # -8- Delete order from `activeOrders`
+            await db_delete_order(
+                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            )
+            # -9- Add order into `completedOrders`
+            completion_time = await time_w_timezone()
+            order_data['status'] = ORDER_STATUS_COMPLETED
+            order_data['lastUpdated'] = completion_time
+            order_data['completedAt'] = completion_time
+            completed_order = await db_create_order(
+                order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+            )
+            return completed_order.inserted_id
 
 
 async def orders_complete_move_to_processing(order_data: dict, db: AsyncIOMotorClient) -> ObjectId:
@@ -228,42 +233,46 @@ async def orders_complete_move_to_processing(order_data: dict, db: AsyncIOMotorC
     source_cell_data['wheelStack'] = None
     source_cell_data['blockedBy'] = None
     source_cell_data['blocked'] = False
-    await db_update_grid_cell_data(
-        source_id, source_row, source_col, source_cell_data, db, DB_PMK_NAME, CLN_GRID
-    )
-    # -5- <- Delete order from destination element
-    await db_delete_extra_cell_order(
-        dest_id, dest_element_name, order_data['_id'], db, DB_PMK_NAME, CLN_GRID
-    )
-    # -6- <- Update `wheelStack` record
-    source_wheelstack_data['placement']['type'] = dest_type
-    source_wheelstack_data['placement']['placementId'] = dest_id
-    source_wheelstack_data['rowPlacement'] = dest_element_row
-    source_wheelstack_data['colPlacement'] = dest_element_name
-    source_wheelstack_data['lastOrder'] = order_data['_id']
-    source_wheelstack_data['status'] = PS_SHIPPED
-    source_wheelstack_data['blocked'] = True
-    await db_update_wheelstack(
-        source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS
-    )
-    # -7- <- Update status for each wheel
-    for wheel in order_data['affectedWheels']['source']:
-        await db_update_wheel_status(
-            wheel, PS_SHIPPED, db, DB_PMK_NAME, CLN_WHEELS
-        )
-    # -8- Delete order from `activeOrders`
-    await db_delete_order(
-        order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS
-    )
-    # -9- Add order into `completedOrders`
-    completion_time = await time_w_timezone()
-    order_data['status'] = ORDER_STATUS_COMPLETED
-    order_data['lastUpdated'] = completion_time
-    order_data['completedAt'] = completion_time
-    completed_order = await db_create_order(
-        order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS
-    )
-    return completed_order.inserted_id
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            await db_update_grid_cell_data(
+                source_id, source_row, source_col, source_cell_data,
+                db, DB_PMK_NAME, CLN_GRID, session, False
+            )
+            # -5- <- Delete order from destination element
+            await db_delete_extra_cell_order(
+                dest_id, dest_element_name, order_data['_id'],
+                db, DB_PMK_NAME, CLN_GRID, session, True
+            )
+            # -6- <- Update `wheelStack` record
+            source_wheelstack_data['placement']['type'] = dest_type
+            source_wheelstack_data['placement']['placementId'] = dest_id
+            source_wheelstack_data['rowPlacement'] = dest_element_row
+            source_wheelstack_data['colPlacement'] = dest_element_name
+            source_wheelstack_data['lastOrder'] = order_data['_id']
+            source_wheelstack_data['status'] = PS_SHIPPED
+            source_wheelstack_data['blocked'] = True
+            await db_update_wheelstack(
+                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            )
+            # -7- <- Update status for each wheel
+            for wheel in order_data['affectedWheels']['source']:
+                await db_update_wheel_status(
+                    wheel, PS_SHIPPED, db, DB_PMK_NAME, CLN_WHEELS, session
+                )
+            # -8- Delete order from `activeOrders`
+            await db_delete_order(
+                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            )
+            # -9- Add order into `completedOrders`
+            completion_time = await time_w_timezone()
+            order_data['status'] = ORDER_STATUS_COMPLETED
+            order_data['lastUpdated'] = completion_time
+            order_data['completedAt'] = completion_time
+            completed_order = await db_create_order(
+                order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+            )
+            return completed_order.inserted_id
 
 
 async def orders_complete_move_to_rejected(order_data: dict, db: AsyncIOMotorClient) -> ObjectId:
@@ -344,42 +353,46 @@ async def orders_complete_move_to_rejected(order_data: dict, db: AsyncIOMotorCli
     source_cell_data['wheelStack'] = None
     source_cell_data['blockedBy'] = None
     source_cell_data['blocked'] = False
-    await db_update_grid_cell_data(
-        source_id, source_row, source_col, source_cell_data, db, DB_PMK_NAME, CLN_GRID
-    )
-    # -5- <- Delete order from destination element
-    await db_delete_extra_cell_order(
-        dest_id, dest_element_name, order_data['_id'], db, DB_PMK_NAME, CLN_GRID
-    )
-    # -6- <- Update `wheelStack` record
-    source_wheelstack_data['placement']['type'] = dest_type
-    source_wheelstack_data['placement']['placementId'] = dest_id
-    source_wheelstack_data['rowPlacement'] = dest_element_row
-    source_wheelstack_data['colPlacement'] = dest_element_name
-    source_wheelstack_data['lastOrder'] = order_data['_id']
-    source_wheelstack_data['status'] = PS_REJECTED
-    source_wheelstack_data['blocked'] = True
-    await db_update_wheelstack(
-        source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS
-    )
-    # -7- <- Update status for each wheel
-    for wheel in order_data['affectedWheels']['source']:
-        await db_update_wheel_status(
-            wheel, PS_REJECTED, db, DB_PMK_NAME, CLN_WHEELS
-        )
-    # -8- Delete order from `activeOrders`
-    await db_delete_order(
-        order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS
-    )
-    # -9- Add order into `completedOrders`
-    completion_time = await time_w_timezone()
-    order_data['status'] = ORDER_STATUS_COMPLETED
-    order_data['lastUpdated'] = completion_time
-    order_data['completedAt'] = completion_time
-    completed_order = await db_create_order(
-        order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS
-    )
-    return completed_order.inserted_id
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            await db_update_grid_cell_data(
+                source_id, source_row, source_col, source_cell_data,
+                db, DB_PMK_NAME, CLN_GRID, session, False
+            )
+            # -5- <- Delete order from destination element
+            await db_delete_extra_cell_order(
+                dest_id, dest_element_name, order_data['_id'],
+                db, DB_PMK_NAME, CLN_GRID, session, True
+            )
+            # -6- <- Update `wheelStack` record
+            source_wheelstack_data['placement']['type'] = dest_type
+            source_wheelstack_data['placement']['placementId'] = dest_id
+            source_wheelstack_data['rowPlacement'] = dest_element_row
+            source_wheelstack_data['colPlacement'] = dest_element_name
+            source_wheelstack_data['lastOrder'] = order_data['_id']
+            source_wheelstack_data['status'] = PS_REJECTED
+            source_wheelstack_data['blocked'] = True
+            await db_update_wheelstack(
+                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            )
+            # -7- <- Update status for each wheel
+            for wheel in order_data['affectedWheels']['source']:
+                await db_update_wheel_status(
+                    wheel, PS_REJECTED, db, DB_PMK_NAME, CLN_WHEELS, session
+                )
+            # -8- Delete order from `activeOrders`
+            await db_delete_order(
+                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            )
+            # -9- Add order into `completedOrders`
+            completion_time = await time_w_timezone()
+            order_data['status'] = ORDER_STATUS_COMPLETED
+            order_data['lastUpdated'] = completion_time
+            order_data['completedAt'] = completion_time
+            completed_order = await db_create_order(
+                order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+            )
+            return completed_order.inserted_id
 
 
 async def orders_complete_move_to_laboratory(order_data: dict, db: AsyncIOMotorClient) -> ObjectId:
@@ -477,44 +490,51 @@ async def orders_complete_move_to_laboratory(order_data: dict, db: AsyncIOMotorC
     if 0 == len(source_wheelstack_data['wheels']):
         source_cell_data['wheelStack'] = None
         source_wheelstack_data['status'] = PS_SHIPPED
-    await db_update_grid_cell_data(
-        source_id, source_row, source_col, source_cell_data, db, DB_PMK_NAME, CLN_GRID
-    )
-    # -5- <- Delete order from destination element
-    await db_delete_extra_cell_order(
-        dest_id, dest_element_name, order_data['_id'], db, DB_PMK_NAME, CLN_GRID
-    )
-    # -6- <- Unblock source `wheelStack` + reshuffle wheels.
-    source_wheelstack_data['lastOrder'] = order_data['_id']
-    source_wheelstack_data['blocked'] = False
-    await db_update_wheelstack(
-        source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS
-    )
-    # We store `objectId` in `affectedWheels` and `wheels`.
-    # So it's guaranteed to be unique, we don't need to check a position, we can just remove it.
-    for new_pos, wheel in enumerate(source_wheelstack_data['wheels']):
-        await db_update_wheel_position(
-            wheel, new_pos, db, DB_PMK_NAME, CLN_WHEELS
-        )
-    # -7- <- Update `chosenWheel`
-    lab_wheel_data = await db_find_wheel_by_object_id(
-        lab_wheel, db, DB_PMK_NAME, CLN_WHEELS
-    )
-    lab_wheel_data['wheelStack'] = None
-    lab_wheel_data['status'] = PS_LABORATORY
-    await db_update_wheel(
-        lab_wheel, lab_wheel_data, db, DB_PMK_NAME, CLN_WHEELS
-    )
-    # -8- <- Delete order from `activeOrders`
-    await db_delete_order(
-        order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS
-    )
-    # -9- <- Add order into `completedOrders`
-    completion_time = await time_w_timezone()
-    order_data['status'] = ORDER_STATUS_COMPLETED
-    order_data['lastUpdated'] = completion_time
-    order_data['completedAt'] = completion_time
-    completed_order = await db_create_order(
-        order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS
-    )
-    return completed_order.inserted_id
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            await db_update_grid_cell_data(
+                source_id, source_row, source_col, source_cell_data, db,
+                DB_PMK_NAME, CLN_GRID, session, False
+            )
+            # -5- <- Delete order from destination element
+            await db_delete_extra_cell_order(
+                dest_id, dest_element_name, order_data['_id'],
+                db, DB_PMK_NAME, CLN_GRID, session, True,
+            )
+            logger.error('delete cell')
+            # -6- <- Unblock source `wheelStack` + reshuffle wheels.
+            source_wheelstack_data['lastOrder'] = order_data['_id']
+            source_wheelstack_data['blocked'] = False
+            await db_update_wheelstack(
+                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            )
+            logger.error('update wheelstack')
+            # We store `objectId` in `affectedWheels` and `wheels`.
+            # So it's guaranteed to be unique, we don't need to check a position, we can just remove it.
+            for new_pos, wheel in enumerate(source_wheelstack_data['wheels']):
+                logger.error('wheels', wheel)
+                await db_update_wheel_position(
+                    wheel, new_pos, db, DB_PMK_NAME, CLN_WHEELS, session
+                )
+            # -7- <- Update `chosenWheel`
+            lab_wheel_data = await db_find_wheel_by_object_id(
+                lab_wheel, db, DB_PMK_NAME, CLN_WHEELS, session
+            )
+            lab_wheel_data['wheelStack'] = None
+            lab_wheel_data['status'] = PS_LABORATORY
+            await db_update_wheel(
+                lab_wheel, lab_wheel_data, db, DB_PMK_NAME, CLN_WHEELS, session
+            )
+            # -8- <- Delete order from `activeOrders`
+            await db_delete_order(
+                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            )
+            # -9- <- Add order into `completedOrders`
+            completion_time = await time_w_timezone()
+            order_data['status'] = ORDER_STATUS_COMPLETED
+            order_data['lastUpdated'] = completion_time
+            order_data['completedAt'] = completion_time
+            completed_order = await db_create_order(
+                order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+            )
+            return completed_order.inserted_id

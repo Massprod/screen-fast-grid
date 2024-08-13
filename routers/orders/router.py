@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse, Response
 from routers.orders.crud import (db_find_order_by_object_id,
                                  db_get_all_orders,
                                  order_make_json_friendly,
-                                 db_get_order_by_object_id,)
+                                 db_get_order_by_object_id, )
 from routers.orders.orders_completion import (orders_complete_move_wholestack,
                                               orders_complete_move_to_rejected,
                                               orders_complete_move_to_processing,
@@ -48,19 +48,19 @@ router = APIRouter()
 async def route_get_order(
         order_object_id: str = Path(...,
                                     description='`objectId` of the order to search'),
-        active_order: bool = Query(True,
-                                   description='False to exclude `activeOrders`'),
-        completed_order: bool = Query(True,
-                                      description='False to exclude `completedOrders`'),
-        canceled_order: bool = Query(True,
-                                     description='False to exclude `canceledOrders`'),
+        active_orders: bool = Query(True,
+                                    description='False to exclude `activeOrders`'),
+        completed_orders: bool = Query(True,
+                                       description='False to exclude `completedOrders`'),
+        canceled_orders: bool = Query(True,
+                                      description='False to exclude `canceledOrders`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
 ):
     order_id = await get_object_id(order_object_id)
     order_filter = {
-        CLN_ACTIVE_ORDERS: active_order,
-        CLN_COMPLETED_ORDERS: completed_order,
-        CLN_CANCELED_ORDERS: canceled_order,
+        CLN_ACTIVE_ORDERS: active_orders,
+        CLN_COMPLETED_ORDERS: completed_orders,
+        CLN_CANCELED_ORDERS: canceled_orders,
     }
     for collection, include in order_filter.items():
         if not include:
@@ -80,8 +80,11 @@ async def route_get_order(
     )
 
 
+# TODO: We need to think about changing platform and grid,
+#  because should we even differ them? Why not just use their id + name to differ.
+#  Also we need extra endpoint to differ sourceId and destinationId for different platforms and grids.
 @router.get(
-    path='/order/all',
+    path='/all',
     description='Get all of the order types, or filter them with query.'
                 'Returns all types by default.',
     name='Get Orders',
@@ -138,6 +141,7 @@ async def route_post_create_order(
     #   Return and add them, after completing everything else (maybe).
     data = order_data.model_dump()
     if ORDER_MOVE_WHOLE_STACK == data['orderType']:
+        # TODO: Add creation of multiple orders for a chosen in QUERY batchNumber.
         logger.info(f'Creating order of type = `{ORDER_MOVE_WHOLE_STACK}`')
         created_order_id = await orders_create_move_whole_wheelstack(db, data)
         return JSONResponse(
