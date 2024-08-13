@@ -112,6 +112,7 @@ async def db_update_wheelstack(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
+        session: AsyncIOMotorClientSession = None
 ):
     try:
         new_data['lastChange'] = await time_w_timezone()
@@ -119,6 +120,7 @@ async def db_update_wheelstack(
         res = await collection.update_one(
             {'_id': wheelstack_object_id},
             {'$set': new_data},
+            session=session,
         )
         return res
     except PyMongoError as e:

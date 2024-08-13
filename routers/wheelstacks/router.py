@@ -10,9 +10,10 @@ from .crud import (db_find_all_wheelstacks, db_insert_wheelstack,
                    db_get_wheelstack_last_change)
 from bson import ObjectId
 from utility.utilities import get_object_id, time_w_timezone
-from constants import DB_PMK_NAME, CLN_WHEELSTACKS, CLN_BASE_PLATFORM, CLN_WHEELS
+from constants import DB_PMK_NAME, CLN_WHEELSTACKS, CLN_BASE_PLATFORM, CLN_WHEELS, CLN_BATCH_NUMBERS
 from routers.wheels.crud import db_find_wheel_by_object_id, db_update_wheel
 from routers.base_platform.crud import cell_exist, place_wheelstack_in_platform, get_platform_by_object_id
+from routers.batch_numbers.crud import db_find_batch_number, db_create_batch_number
 
 
 router = APIRouter()
@@ -80,6 +81,13 @@ async def route_create_wheelstack(
                        f' Already Assigned to = {exist['wheelStack']}',
                 status_code=status.HTTP_409_CONFLICT,
             )
+        if exist['batchNumber'] != wheelstack_data['batchNumber']:
+            raise HTTPException(
+                detail=f'All of the wheels in the `wheelstack` should have the same `batchNumber`.'
+                       f' And it should be equal to the `batchNumber` of the `wheelstack`.',
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
         cor_wheels.append(wheel_id)
     # Wheels ---
     # +++ Placement empty
@@ -108,43 +116,57 @@ async def route_create_wheelstack(
             status_code=status.HTTP_403_FORBIDDEN,
         )
     # Placement blocked ---
-    creation_time = await time_w_timezone()
-    correct_data = {
-        'originalPisId': wheelstack_data['originalPisId'],
-        'batchNumber': wheelstack_data['batchNumber'],
-        'placement': {
-            'type': wheelstack_data['placementType'],
-            'placementId': placement_id,
-        },
-        'rowPlacement': wheelstack_data['rowPlacement'],
-        'colPlacement': wheelstack_data['colPlacement'],
-        'createdAt': creation_time,
-        'lastChange': creation_time,
-        'lastOrder': None,
-        'maxSize': wheelstack_data['maxSize'],
-        'blocked': False,
-        'wheels': cor_wheels,
-        'status': wheelstack_data['status'],
-    }
-    result = await db_insert_wheelstack(correct_data, db, DB_PMK_NAME, CLN_WHEELSTACKS)
-    created_id: ObjectId = result.inserted_id
-    await place_wheelstack_in_platform(placement_id, created_id, row, col, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
-    # +++ Marking Wheels
-    for index, wheel_id in enumerate(cor_wheels):
-        record: dict = {
-            'wheelStack': {
-                'wheelStackId': created_id,
-                'wheelStackPosition': index,
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            batch_number_exist = await db_find_batch_number(
+                wheelstack_data['batchNumber'], db, DB_PMK_NAME, CLN_BATCH_NUMBERS, session
+            )
+            if batch_number_exist is None:
+                new_batch_number_data: dict = {
+                    'batchNumber': wheelstack_data['batchNumber'],
+                    'laboratoryPassed': False,
+                    'laboratoryTestDate': None,
+                }
+                await db_create_batch_number(
+                    new_batch_number_data, db, DB_PMK_NAME, CLN_BATCH_NUMBERS, session
+                )
+            creation_time = await time_w_timezone()
+            correct_data = {
+                'originalPisId': wheelstack_data['originalPisId'],
+                'batchNumber': wheelstack_data['batchNumber'],
+                'placement': {
+                    'type': wheelstack_data['placementType'],
+                    'placementId': placement_id,
+                },
+                'rowPlacement': wheelstack_data['rowPlacement'],
+                'colPlacement': wheelstack_data['colPlacement'],
+                'createdAt': creation_time,
+                'lastChange': creation_time,
+                'lastOrder': None,
+                'maxSize': wheelstack_data['maxSize'],
+                'blocked': False,
+                'wheels': cor_wheels,
+                'status': wheelstack_data['status'],
             }
-        }
-        await db_update_wheel(wheel_id, record, db, DB_PMK_NAME, CLN_WHEELS)
-    # Marking Wheels ---
-    return JSONResponse(
-        content={
-            '_id': str(created_id)
-        },
-        status_code=status.HTTP_201_CREATED,
-    )
+            result = await db_insert_wheelstack(correct_data, db, DB_PMK_NAME, CLN_WHEELSTACKS)
+            created_id: ObjectId = result.inserted_id
+            await place_wheelstack_in_platform(placement_id, created_id, row, col, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
+            # +++ Marking Wheels
+            for index, wheel_id in enumerate(cor_wheels):
+                record: dict = {
+                    'wheelStack': {
+                        'wheelStackId': created_id,
+                        'wheelStackPosition': index,
+                    }
+                }
+                await db_update_wheel(wheel_id, record, db, DB_PMK_NAME, CLN_WHEELS)
+            # Marking Wheels ---
+            return JSONResponse(
+                content={
+                    '_id': str(created_id)
+                },
+                status_code=status.HTTP_201_CREATED,
+            )
 
 
 @router.get(

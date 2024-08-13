@@ -35,7 +35,7 @@ class CreateWheelStackRequest(BaseModel):
                                description='Original ID created by PIS, before its given to our service.')
     batchNumber: str = Field(...,
                              description="batch number of the WheelStack, we can't have wheels with different "
-                                         "batchNumbers inside the one Wheelstack")
+                                         "batch_numbers inside the one Wheelstack")
     placementType: CreatePlacement = Field(...,
                                            description='Type of the placement we want it to place into:'
                                                        'only `basePlatform` allowed')
