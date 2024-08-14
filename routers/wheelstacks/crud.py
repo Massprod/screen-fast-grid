@@ -3,6 +3,7 @@ from pymongo.errors import PyMongoError
 from fastapi import HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
 from bson import ObjectId
+from constants import PRES_TYPE_GRID
 from utility.utilities import get_db_collection, time_w_timezone
 
 
@@ -43,6 +44,31 @@ async def db_find_all_wheelstacks(
         return result
     except PyMongoError as e:
         logger.error(f"Error getting all `wheelStack`s: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database search error")
+
+
+async def db_find_all_processing_available(
+        batch_number: str,
+        placement_id: ObjectId,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        'batchNumber': batch_number,
+        'placement': {
+            'type': PRES_TYPE_GRID,
+            'placementId': placement_id,
+        },
+        'blocked': False,
+        'status': PRES_TYPE_GRID,
+    }
+    try:
+        result = await collection.find(query).to_list(length=None)
+        return result
+    except PyMongoError as e:
+        logger.error(f"Error getting all available for processing `wheelStack`s: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database search error")
 
 
@@ -112,7 +138,7 @@ async def db_update_wheelstack(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
-        session: AsyncIOMotorClientSession = None
+        session: AsyncIOMotorClientSession = None,
 ):
     try:
         new_data['lastChange'] = await time_w_timezone()
