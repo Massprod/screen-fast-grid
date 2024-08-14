@@ -1,3 +1,5 @@
+import asyncio
+
 from loguru import logger
 from pymongo.errors import PyMongoError
 from fastapi import HTTPException, status
@@ -75,13 +77,21 @@ async def db_create_order(
         db_collection: str,
         session: AsyncIOMotorClientSession = None,
 ):
-    try:
-        collection = await get_db_collection(db, db_name, db_collection)
-        res = await collection.insert_one(order_data, session=session)
-        return res
-    except PyMongoError as e:
-        logger.error(f"Error creating Order: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database insertion error")
+    collection = await get_db_collection(db, db_name, db_collection)
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            res = await collection.insert_one(order_data, session=session)
+            return res
+        except PyMongoError as error:
+            # `TransientTransactionError` <- not critical can be solved with retry.
+            if error.has_error_label('TransientTransactionError'):
+                logger.warning(f'`TransientTransactionError`: {error}. Attempt {attempt} of {max_retries}')
+            if attempt < max_retries - 1:
+                await asyncio.sleep(1)
+            else:
+                logger.error(f"Error creating Order: {error}")
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database insertion error")
 
 
 async def db_update_order(
