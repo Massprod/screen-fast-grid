@@ -136,11 +136,18 @@ class CreateProcessingOrderRequest(BaseModel):
                                                description='data to identify and validate `destination` as correct one')
 
 
+class OutOrderTypes(str, Enum):
+    moveToReProcessing = ORDER_MOVE_TO_PROCESSING
+    moveToProcessing = ORDER_MOVE_TO_REJECTED
+
+
 class CreateBulkProcessingOrderRequest(BaseModel):
     orderName: str = Field('',
                            description='Optional name of the `order`')
     orderDescription: str = Field('',
                                   description='Optional description of the `order`')
+    orderType: OutOrderTypes = Field(...,
+                                     description='Order type process|reject')
     batchNumber: str = Field(...,
                              description='`batchNumber` to gather `wheelstack`s by')
     placement_id: str = Field(...,

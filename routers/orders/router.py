@@ -16,7 +16,7 @@ from routers.orders.models.models import CreateMoveOrderRequest, CreateLabOrderR
 from routers.orders.orders_creation import (orders_create_move_whole_wheelstack,
                                             orders_create_move_to_laboratory,
                                             orders_create_move_to_processing,
-                                            orders_create_move_to_rejected, orders_create_bulk_move_to_processing,
+                                            orders_create_move_to_rejected, orders_create_bulk_move_to_pro_rej_orders,
                                             )
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Path, Query
 from constants import (ORDER_MOVE_WHOLE_STACK, ORDER_MOVE_TO_LABORATORY,
@@ -196,17 +196,17 @@ async def route_post_create_order_move_to_processing(
 
 
 @router.post(
-    path='/create/bulk/process/',
+    path='/create/bulk/',
     description=f'Creates orders for every available `wheelstack` of the batch',
     name='New Bulk Orders',
 )
-async def route_post_create_bulk_orders_move_to_processing(
+async def route_post_create_bulk_orders_move_to_pro_rej(
         order_data: CreateBulkProcessingOrderRequest = Body(...,
                                                             description='basic data'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
 ):
     order_req_data = order_data.model_dump()
-    created_orders = await orders_create_bulk_move_to_processing(order_req_data, db)
+    created_orders = await orders_create_bulk_move_to_pro_rej_orders(order_req_data, db)
     return JSONResponse(
         content={
             'createdOrders': [str(orderId) for orderId in created_orders],

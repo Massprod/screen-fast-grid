@@ -487,6 +487,7 @@ async def orders_create_move_to_processing(db: AsyncIOMotorClient, order_data: d
             return created_order_id
 
 
+# BULK PROCESS/REJECT
 async def process_wheelstack(
         db, wheelstack_data, order_req_data,
         destination_id, destination_element_name, session
@@ -522,7 +523,7 @@ async def process_wheelstack(
             'destination': [],
         },
         'status': ORDER_STATUS_PENDING,
-        'orderType': ORDER_MOVE_TO_PROCESSING,
+        'orderType': order_req_data['orderType'],
     }
 
     created_order = await db_create_order(order_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session)
@@ -551,7 +552,7 @@ async def process_wheelstack(
     return result
 
 
-async def orders_create_bulk_move_to_processing(order_req_data: dict, db: AsyncIOMotorClient):
+async def orders_create_bulk_move_to_pro_rej_orders(order_req_data: dict, db: AsyncIOMotorClient):
     batch_number = order_req_data['batchNumber']
     placement_id = order_req_data['placement_id']
     batch_number_data = await db_find_batch_number(batch_number, db, DB_PMK_NAME, CLN_BATCH_NUMBERS)
@@ -566,7 +567,8 @@ async def orders_create_bulk_move_to_processing(order_req_data: dict, db: AsyncI
             detail=MSG_TESTS_NOT_DONE,
             status_code=status.HTTP_403_FORBIDDEN,
         )
-    if not batch_number_data['laboratoryPassed']:
+    if (order_req_data['orderType'] == ORDER_MOVE_TO_PROCESSING
+            and not batch_number_data['laboratoryPassed']):
         logger.error(f'Attempt to use tests failed `batchNumber` = {batch_number}')
         raise HTTPException(
             detail=MSG_TESTS_FAILED,
@@ -606,6 +608,7 @@ async def orders_create_bulk_move_to_processing(order_req_data: dict, db: AsyncI
                 placement_object_id, results, db, DB_PMK_NAME, CLN_GRID, session, record_change=True,
             )
             return orders
+# ---
 
 
 async def orders_create_move_to_rejected(db: AsyncIOMotorClient, order_data: dict) -> ObjectId:
