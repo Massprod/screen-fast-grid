@@ -48,6 +48,10 @@ EE_GRID_ROW_NAME: str = 'extra'
 EE_HAND_CRANE: str = 'handCrane'
 EE_LABORATORY: str = 'laboratory'
 
+# CREATION_REJECT_MESSAGES
+MSG_TESTS_NOT_DONE = "TESTS_NOT_DONE"
+MSG_TESTS_FAILED = "TESTS_FAILED"
+
 # FOLDERS
 FLD_BASIC_SCHEMAS: str = 'database/collections/schemas'
 
