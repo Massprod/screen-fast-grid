@@ -1,5 +1,5 @@
 from loguru import logger
-from pymongo.errors import PyMongoError
+from pymongo.errors import PyMongoError, DuplicateKeyError
 from fastapi import status, HTTPException
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
 from utility.utilities import get_db_collection, log_db_record, time_w_timezone
@@ -25,16 +25,39 @@ async def db_create_batch_number(
     batch_number_data['createdAt'] = await time_w_timezone()
     db_log_data = await log_db_record(db_name, db_collection)
     logger.info(
-        f'Creating a new `batchNumber` record in `{db_collection} collection' + db_log_data
+        f'Creating a new `batchNumber` record in `{db_collection}` collection' + db_log_data
     )
+    # max_retries = 6
+    #
+    # for attempt in range(max_retries):
     try:
         res = await collection.insert_one(batch_number_data, session=session)
         logger.info(
             f'Successfully created a new `batchNumber` with `objectId` = {res.inserted_id}' + db_log_data
         )
         return res
+    # We don't actually care about creating it at withing transaction,
+    #  so if record exists => Ignore.
+    # And we're making multiple async requests, the reason why it fails.
+    # except (pymongo.errors.ConnectionFailure, pymongo.errors.OperationFailure) as error:
+    #     if error.has_error_label("TransientTransactionError"):
+    #         logger.warning(f"TransientTransactionError: {error}. Attempt {attempt + 1} of {max_retries}")
+    #         if attempt < max_retries - 1:
+    #             await asyncio.sleep(1)
+    #         else:
+    #             logger.error(f"Max retries reached. Transaction aborted: {error}")
+    #             return
+    #     else:
+    #         logger.error(f'Error while creating `batchNumber`: {error}' + db_log_data)
+    #         raise HTTPException(
+    #             detail=f'Error while creating `batchNumber`',
+    #             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    #         )
+    except DuplicateKeyError as error:
+        logger.warning(f'Error while creating `batchNumber`, already exists: {error}')
+        return
     except PyMongoError as error:
-        logger.error(f'Error while creating `batchNumber` = {error}' + db_log_data)
+        logger.error(f'Error while creating `batchNumber`: {error}' + db_log_data)
         raise HTTPException(
             detail=f'Error while creating `batchNumber`',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
