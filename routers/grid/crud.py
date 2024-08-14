@@ -4,7 +4,7 @@ from fastapi import status
 from pymongo.errors import PyMongoError
 from fastapi.exceptions import HTTPException
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
-from utility.utilities import get_db_collection, time_w_timezone, log_db_record
+from utility.utilities import get_db_collection, time_w_timezone, log_db_record, get_object_id
 
 
 async def grid_make_json_friendly(grid_data: dict) -> dict:
@@ -444,6 +444,110 @@ async def db_update_extra_cell_data(
         logger.error(f'Error while updating extra `cell_data` in {db_collection}: {error}')
         raise HTTPException(
             detail=f'Error while updating extra `cell_data`',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+async def db_append_extra_cell_order(
+        grid_id: ObjectId,
+        extra_element_name: str,
+        new_order: ObjectId,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+        session: AsyncIOMotorClientSession = None,
+        record_change: bool = True,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': grid_id,
+        f'extra.{extra_element_name}': {
+            '$exists': True,
+        }
+    }
+    update = {
+        '$set': {
+            f'extra.{extra_element_name}.orders.{new_order}': new_order,
+        }
+    }
+    if  record_change:
+        update['$set']['lastChange'] = await time_w_timezone()
+    try:
+        result = await collection.update_one(query, update, session=session)
+        return result
+    except PyMongoError as error:
+        logger.error(f'Error while appending new order to the extra element = {extra_element_name}'
+                     f' in grid = {grid_id} | Error = {error}')
+        raise HTTPException(
+            detail='Error while trying to append new order',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+async def db_append_extra_cell_orders(
+        grid_id: ObjectId,
+        extra_element_name: str,
+        new_orders,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+        session: AsyncIOMotorClientSession = None,
+        record_change: bool = True,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': grid_id,
+        f'extra.{extra_element_name}': {
+            '$exists': True,
+        }
+    }
+    update = {
+        '$set': {
+            **{f'extra.{extra_element_name}.orders.{order_id}': order_id for order_id in new_orders},
+        }
+    }
+    if record_change:
+        update['$set']['lastChange'] = await time_w_timezone()
+    try:
+        result = await collection.update_one(query, update, session=session)
+        return result
+    except PyMongoError as error:
+        logger.error(f'Error while appending new orders to the extra element = {extra_element_name}'
+                     f' in grid = {grid_id} | Error = {error}')
+        raise HTTPException(
+            detail='Error while trying to append new orders',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+async def db_update_grid_cells_data(
+        grid_id: ObjectId,
+        new_cells_data,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+        session: AsyncIOMotorClientSession = None,
+        record_change: bool = True,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': grid_id,
+    }
+    update = {
+        '$set': {
+            **{f'rows.{cell_data['sourceRow']}'
+               f'.columns.{cell_data['sourceCol']}': cell_data['newSourceCellData'] for cell_data in new_cells_data},
+        }
+    }
+    if record_change:
+        update['$set']['lastChange'] = await time_w_timezone()
+    try:
+        result = await collection.update_one(query, update, session=session)
+        return result
+    except PyMongoError as error:
+        logger.error(f'Error while updating multiple cells data in the grid {grid_id} = {error}')
+        raise HTTPException(
+            detail=f'Error while updating multiple cells data',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
