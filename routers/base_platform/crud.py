@@ -398,7 +398,7 @@ async def db_update_platform_cell_data(
         }
     }
     if record_change:
-        update['$set']['lastChange'] = await time_w_timezone(),
+        update['$set']['lastChange'] = await time_w_timezone()
     try:
         result = await collection.update_one(query, update, session=session)
         return result
