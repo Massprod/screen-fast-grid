@@ -134,3 +134,16 @@ class CreateProcessingOrderRequest(BaseModel):
                                      description='data to identify and validate `source` as correct one')
     destination: ProcessingDestination = Field(...,
                                                description='data to identify and validate `destination` as correct one')
+
+
+class CreateBulkProcessingOrderRequest(BaseModel):
+    orderName: str = Field('',
+                           description='Optional name of the `order`')
+    orderDescription: str = Field('',
+                                  description='Optional description of the `order`')
+    batchNumber: str = Field(...,
+                             description='`batchNumber` to gather `wheelstack`s by')
+    placement_id: str = Field(...,
+                              description='`placementId` to gather `wheelstack`s')
+    destination: ProcessingDestination = Field(...,
+                                               description='data to identify and validate `destination` as correct one')

@@ -1,3 +1,5 @@
+import asyncio
+
 from bson import ObjectId
 from loguru import logger
 from fastapi import HTTPException, status
@@ -5,8 +7,10 @@ from routers.orders.crud import db_create_order
 from motor.motor_asyncio import AsyncIOMotorClient
 from utility.utilities import get_object_id, time_w_timezone
 from routers.grid.crud import (db_get_grid_cell_data, db_update_grid_cell_data,
-                               db_get_grid_extra_cell_data, db_update_extra_cell_data)
-from routers.wheelstacks.crud import db_find_wheelstack_by_object_id, db_update_wheelstack
+                               db_get_grid_extra_cell_data, db_update_extra_cell_data, get_grid_preset_by_object_id,
+                               db_append_extra_cell_order, db_append_extra_cell_orders, db_update_grid_cells_data)
+from routers.wheelstacks.crud import db_find_wheelstack_by_object_id, db_update_wheelstack, \
+    db_find_all_processing_available
 from routers.base_platform.crud import db_get_platform_cell_data, db_update_platform_cell_data
 from routers.wheels.crud import db_find_wheel_by_object_id
 from constants import (PRES_TYPE_GRID, PRES_TYPE_PLATFORM,
@@ -14,13 +18,14 @@ from constants import (PRES_TYPE_GRID, PRES_TYPE_PLATFORM,
                        CLN_WHEELSTACKS, CLN_BASE_PLATFORM,
                        ORDER_STATUS_PENDING, CLN_ACTIVE_ORDERS,
                        EE_HAND_CRANE, EE_GRID_ROW_NAME, CLN_WHEELS, EE_LABORATORY,
-                       ORDER_MOVE_TO_LABORATORY, ORDER_MOVE_TO_PROCESSING, ORDER_MOVE_TO_REJECTED)
+                       ORDER_MOVE_TO_LABORATORY, ORDER_MOVE_TO_PROCESSING, ORDER_MOVE_TO_REJECTED, MSG_TESTS_NOT_DONE,
+                       MSG_TESTS_FAILED)
 from routers.batch_numbers.crud import db_find_batch_number
 
 
 async def orders_create_move_whole_wheelstack(db: AsyncIOMotorClient, order_data: dict) -> ObjectId:
     # SOURCE:
-    #  1. SourcePlacement EXIST
+    #  1. SourcePlacement EXISTS
     #  2. SourceCell not `blocked` and not `blockedBy`
     #  3. SourceCell CONTAINS `wheelStack` and `wheelStack` EXIST, and it's not `blocked`
     # +++ Source
@@ -83,7 +88,7 @@ async def orders_create_move_whole_wheelstack(db: AsyncIOMotorClient, order_data
         )
     # Source ---
     # DESTINATION:
-    #  1. DestinationPlacement EXIST
+    #  1. DestinationPlacement EXISTS
     #  2. If DESTINATION cell is EMPTY and not `blocked`
     # +++ Destination
     destination_id: ObjectId = await get_object_id(order_data['destination']['placementId'])
@@ -317,9 +322,8 @@ async def orders_create_move_to_laboratory(db: AsyncIOMotorClient, order_data: d
             )
             # DESTINATION change:
             #  1. ADD created order into `extra` element `orders`.
-            destination_cell_data['orders'][str(created_order_id)] = created_order_id
-            await db_update_extra_cell_data(
-                destination_id, extra_name, destination_cell_data,
+            await db_append_extra_cell_order(
+                destination_id, extra_name, created_order_id,
                 db, DB_PMK_NAME, CLN_GRID, session, True
             )
             return created_order_id
@@ -389,10 +393,16 @@ async def orders_create_move_to_processing(db: AsyncIOMotorClient, order_data: d
             detail=f'Provided `batchNumber` doesnt exist',
             status_code=status.HTTP_404_NOT_FOUND,
         )
-    if not batch_number_data['laboratoryPassed']:
+    if not batch_number_data['laboratoryTestDate']:
         logger.error(f'Attempt to move not tested `wheelstack` = {source_wheelstack_data['_id']}')
         raise HTTPException(
-            detail="`wheelstack` didn't passed the tests",
+            detail=MSG_TESTS_NOT_DONE,
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    if not batch_number_data['laboratoryPassed']:
+        logger.error(f'Attempt to move test failed `wheelstack` = {source_wheelstack_data['_id']}')
+        raise HTTPException(
+            detail=MSG_TESTS_FAILED,
             status_code=status.HTTP_403_FORBIDDEN,
         )
     # DESTINATION:
@@ -470,11 +480,132 @@ async def orders_create_move_to_processing(db: AsyncIOMotorClient, order_data: d
             )
             # DESTINATION change:
             #  1. ADD created order into `extra` element `orders`.
-            destination_cell_data['orders'][str(created_order_id)] = created_order_id
-            await db_update_extra_cell_data(
-                destination_id, extra_name, destination_cell_data, db, DB_PMK_NAME, CLN_GRID, session, True
+            await db_append_extra_cell_order(
+                destination_id, extra_name, created_order_id,
+                db, DB_PMK_NAME, CLN_GRID, session, True
             )
             return created_order_id
+
+
+async def process_wheelstack(
+        db, wheelstack_data, order_req_data,
+        destination_id, destination_element_name, session
+):
+    cur_wheelstack_id = wheelstack_data['_id']
+    cur_wheelstack_row = wheelstack_data['rowPlacement']
+    cur_wheelstack_col = wheelstack_data['colPlacement']
+    cur_wheelstack_placement_id = wheelstack_data['placement']['placementId']
+    creation_time = await time_w_timezone()
+    order_data = {
+        'orderName': order_req_data['orderName'],
+        'orderDescription': order_req_data['orderDescription'],
+        'createdAt': creation_time,
+        'lastUpdated': creation_time,
+        'source': {
+            'placementType': wheelstack_data['placement']['type'],
+            'placementId': cur_wheelstack_placement_id,
+            'rowPlacement': cur_wheelstack_row,
+            'columnPlacement': cur_wheelstack_col,
+        },
+        'destination': {
+            'placementType': wheelstack_data['placement']['type'],
+            'placementId': destination_id,
+            'rowPlacement': EE_GRID_ROW_NAME,
+            'columnPlacement': destination_element_name,
+        },
+        'affectedWheelStacks': {
+            'source': wheelstack_data['_id'],
+            'destination': None,
+        },
+        'affectedWheels': {
+            'source': wheelstack_data['wheels'],
+            'destination': [],
+        },
+        'status': ORDER_STATUS_PENDING,
+        'orderType': ORDER_MOVE_TO_PROCESSING,
+    }
+
+    created_order = await db_create_order(order_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session)
+    created_order_id = created_order.inserted_id
+    # Order creation ---
+    # SOURCE change:
+    #  1. Block SOURCE cell and `wheelStack` on it.
+    new_source_cell_data = {
+        'wheelStack': cur_wheelstack_id,
+        'blocked': True,
+        'blockedBy': created_order_id,
+    }
+    wheelstack_data['blocked'] = True
+    wheelstack_data['lastOrder'] = created_order_id
+    await db_update_wheelstack(
+        wheelstack_data, wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+    )
+    # DESTINATION change:
+    #  1. ADD created order into `extra` element `orders`.
+    result = {
+        'orderId': created_order_id,
+        'sourceRow': cur_wheelstack_row,
+        'sourceCol': cur_wheelstack_col,
+        'newSourceCellData': new_source_cell_data,
+    }
+    return result
+
+
+async def orders_create_bulk_move_to_processing(order_req_data: dict, db: AsyncIOMotorClient):
+    batch_number = order_req_data['batchNumber']
+    placement_id = order_req_data['placement_id']
+    batch_number_data = await db_find_batch_number(batch_number, db, DB_PMK_NAME, CLN_BATCH_NUMBERS)
+    if batch_number_data is None:
+        raise HTTPException(
+            detail=f'Provided `batchNumber` = {batch_number}. Not Found',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    if not batch_number_data['laboratoryTestDate']:
+        logger.error(f'Attempt to use not tested `batchNumber` = {batch_number}')
+        raise HTTPException(
+            detail=MSG_TESTS_NOT_DONE,
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    if not batch_number_data['laboratoryPassed']:
+        logger.error(f'Attempt to use tests failed `batchNumber` = {batch_number}')
+        raise HTTPException(
+            detail=MSG_TESTS_FAILED,
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    placement_object_id = await get_object_id(placement_id)
+    all_available = await db_find_all_processing_available(
+        batch_number, placement_object_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
+    )
+    destination_id = await get_object_id(order_req_data['destination']['placementId'])
+    destination_element_name = order_req_data['destination']['elementName']
+    destination_exist = await get_grid_preset_by_object_id(
+        destination_id, db, DB_PMK_NAME, CLN_GRID
+    )
+    if destination_exist is None:
+        logger.error(f'Attempt to use not existing placement = {destination_id}')
+        raise HTTPException(
+            detail='Provided `destinationId`. Not Found',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    async_tasks = []
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            for wheelstack_data in all_available:
+                task = process_wheelstack(
+                    db, wheelstack_data, order_req_data,
+                    destination_id, destination_element_name, session
+                )
+                async_tasks.append(task)
+            results = await asyncio.gather(*async_tasks)
+            orders = [result['orderId'] for result in results]
+            await db_append_extra_cell_orders(
+                destination_id, destination_element_name, orders,
+                db, DB_PMK_NAME, CLN_GRID, session, False
+            )
+            await db_update_grid_cells_data(
+                placement_object_id, results, db, DB_PMK_NAME, CLN_GRID, session, record_change=True,
+            )
+            return orders
 
 
 async def orders_create_move_to_rejected(db: AsyncIOMotorClient, order_data: dict) -> ObjectId:
@@ -541,9 +672,10 @@ async def orders_create_move_to_rejected(db: AsyncIOMotorClient, order_data: dic
             detail=f'Provided `batchNumber` doesnt exist',
             status_code=status.HTTP_404_NOT_FOUND,
         )
-    if batch_number_data['laboratoryTestDate'] is None:
+    if not batch_number_data['laboratoryTestDate']:
+        logger.error(f'Attempt to move not tested `wheelstack` = {source_wheelstack_data['_id']}')
         raise HTTPException(
-            detail='`wheelstack` not tested',
+            detail=MSG_TESTS_NOT_DONE,
             status_code=status.HTTP_403_FORBIDDEN,
         )
     # DESTINATION:
@@ -553,6 +685,7 @@ async def orders_create_move_to_rejected(db: AsyncIOMotorClient, order_data: dic
     #  2. Check for it not being `blocked` and being of correct type `EE_HAND_CRANE`.
     destination_id = await get_object_id(order_data['destination']['placementId'])
     extra_name = order_data['destination']['elementName']
+    # TODO: Change to just add a single record, not a whole copy of existed one.
     destination_cell_data = await db_get_grid_extra_cell_data(
         destination_id, extra_name, db, DB_PMK_NAME, CLN_GRID
     )
@@ -621,9 +754,8 @@ async def orders_create_move_to_rejected(db: AsyncIOMotorClient, order_data: dic
             )
             # DESTINATION change:
             #  1. ADD created order into `extra` element `orders`.
-            destination_cell_data['orders'][str(created_order_id)] = created_order_id
-            await db_update_extra_cell_data(
-                destination_id, extra_name, destination_cell_data,
+            await db_append_extra_cell_order(
+                destination_id, extra_name, created_order_id,
                 db, DB_PMK_NAME, CLN_GRID, session, True
             )
             return created_order_id

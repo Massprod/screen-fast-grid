@@ -11,11 +11,12 @@ from routers.orders.orders_completion import (orders_complete_move_wholestack,
                                               orders_complete_move_to_processing,
                                               orders_complete_move_to_laboratory)
 from routers.orders.orders_cancelation import orders_cancel_basic_extra_element_moves, orders_cancel_move_wholestack
-from routers.orders.models.models import CreateMoveOrderRequest, CreateLabOrderRequest, CreateProcessingOrderRequest
+from routers.orders.models.models import CreateMoveOrderRequest, CreateLabOrderRequest, CreateProcessingOrderRequest, \
+    CreateBulkProcessingOrderRequest
 from routers.orders.orders_creation import (orders_create_move_whole_wheelstack,
                                             orders_create_move_to_laboratory,
                                             orders_create_move_to_processing,
-                                            orders_create_move_to_rejected,
+                                            orders_create_move_to_rejected, orders_create_bulk_move_to_processing,
                                             )
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Path, Query
 from constants import (ORDER_MOVE_WHOLE_STACK, ORDER_MOVE_TO_LABORATORY,
@@ -181,7 +182,7 @@ async def route_post_create_order_move_to_lab(
 async def route_post_create_order_move_to_processing(
         order_data: CreateProcessingOrderRequest = Body(...,
                                                         description='all required data for a new processing `order`'),
-        db: AsyncIOMotorClient = Depends(mongo_client.depend_client)
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
 ):
     data = order_data.model_dump()
     logger.info(f'Creating order of type = {ORDER_MOVE_TO_PROCESSING}')
@@ -191,6 +192,26 @@ async def route_post_create_order_move_to_processing(
             '_id': str(created_order_id),
         },
         status_code=status.HTTP_201_CREATED,
+    )
+
+
+@router.post(
+    path='/create/bulk/process/',
+    description=f'Creates orders for every available `wheelstack` of the batch',
+    name='New Bulk Orders',
+)
+async def route_post_create_bulk_orders_move_to_processing(
+        order_data: CreateBulkProcessingOrderRequest = Body(...,
+                                                            description='basic data'),
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+):
+    order_req_data = order_data.model_dump()
+    created_orders = await orders_create_bulk_move_to_processing(order_req_data, db)
+    return JSONResponse(
+        content={
+            'createdOrders': [str(orderId) for orderId in created_orders],
+        },
+        status_code=status.HTTP_200_OK,
     )
 
 
