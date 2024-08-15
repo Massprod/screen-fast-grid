@@ -1,0 +1,31 @@
+{
+  "bsonType": "object",
+  "required": ["name", "createdAt", "lastChange", "elements"],
+  "properties": {
+    "_id": {
+      "bsonType": "objectId",
+      "description": "DB basic id"
+    },
+    "name": {
+      "bsonType": "string",
+      "description": "Required. Name of the storage for identification"
+    },
+    "createdAt": {
+      "bsonType": "date",
+      "description": "Required. Date of the storage creation"
+    },
+    "lastChange": {
+      "bsonType": "date",
+      "description": "Required. Date of the last change made in the storage"
+    },
+    "elements": {
+      "bsonType": "object",
+      "description": "Required. Elements currently placed in the storage"
+    }
+  },
+  "indexes": [
+    { "keys": {"name":  1}, "options" :  {"unique": true, "name":  "Indexing by unique name of the document"} },
+    { "keys": {"createdAt":  -1}, "options": {"name":  "Indexing by the date of creation of the document"} },
+    { "keys": {"lastChange":  -1}, "options": {"name": "Indexing by the date of last change of the document"} }
+  ]
+}

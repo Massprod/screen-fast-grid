@@ -34,6 +34,7 @@ CLN_WHEELSTACKS: str = 'wheelStacks'
 CLN_WHEELS: str = 'wheels'
 CLN_PRESETS: str = 'presets'
 CLN_BATCH_NUMBERS: str = 'batchNumbers'
+CLN_STORAGES: str = 'storages'
 # PRESETS
 PRES_PMK_GRID: str = 'pmkGrid'
 PRES_PMK_PLATFORM: str = 'pmkBasePlatform'
@@ -41,7 +42,6 @@ PRES_PMK_PLATFORM: str = 'pmkBasePlatform'
 # PRESET TYPES
 PRES_TYPE_GRID: str = 'grid'
 PRES_TYPE_PLATFORM: str = 'basePlatform'
-PRES_TYPE_STORAGE: str = 'storage'
 
 # EXTRA ELEMENT TYPES
 EE_GRID_ROW_NAME: str = 'extra'
