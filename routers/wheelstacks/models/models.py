@@ -3,7 +3,7 @@ from typing import Optional
 from pydantic import BaseModel, Field, conlist, field_validator
 from constants import (PS_BASE_PLATFORM, PS_GRID,
                        PS_SHIPPED, PS_LABORATORY,
-                       PS_REJECTED, PRES_TYPE_GRID,
+                       PS_REJECTED, PRES_TYPE_GRID, PS_STORAGE,
                        PRES_TYPE_PLATFORM, WS_MAX_WHEELS, WS_MIN_WHEELS)
 
 
@@ -13,6 +13,7 @@ class WheelStackStatus(str, Enum):
     shipped = PS_SHIPPED
     laboratory = PS_LABORATORY
     rejected = PS_REJECTED
+    storage = PS_STORAGE
 
 
 # We should only allow creation on the `basePlatform`
