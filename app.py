@@ -1,5 +1,6 @@
 from loguru import logger
-from fastapi import FastAPI
+from uuid import uuid4
+from fastapi import FastAPI, Request
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,6 +8,7 @@ from database.mongo_connection import mongo_client
 from routers.grid.router import router as grid_router
 from routers.wheels.router import router as wheel_router
 from routers.orders.router import router as orders_router
+from routers.storages.router import router as storages_router
 from routers.presets.router import router as presets_router
 from routers.base_platform.router import router as platform_router
 from routers.wheelstacks.router import router as wheelstack_router
@@ -17,14 +19,11 @@ from constants import PRES_PMK_GRID, PRES_PMK_PLATFORM, DB_PMK_NAME, CLN_PRESETS
 from database.presets.presets import create_pmk_grid_preset, create_pmk_platform_preset
 
 
-# TODO: We need to find a way to use transactions.
-#  Container creation is already done, but for some reason we can't connect to it.
-#  But we shouldn't make DB-records with multiple collections without transactions.
-#  We have like 5-6 add|update|delete one-by-one if one fails, we won't be able to change previous.
-#  Need to find the way, if we can build container and it's working correctly and responding.
-#  Then we totally can somehow connect to it, need more research.
-#  But it's not critical until we actually use this APP.
-
+# TODO: We need to change records CREATION for some cases.
+#  Because, if we're getting multiple requests when we
+#  need to find something, and if it doesnt exist we create it.
+#  With multiple requests at the same time, we're going to get DUPLICATE_ERROR,
+#  and transactions are going to fail => request fail.
 load_dotenv('.env')
 
 
@@ -81,6 +80,7 @@ app.include_router(batch_numbers_router, prefix='/batch_number', tags=['Batch'])
 app.include_router(wheel_router, prefix='/wheels', tags=['Wheels'])
 app.include_router(wheelstack_router, prefix='/wheelstacks', tags=['WheelStack'])
 app.include_router(orders_router, prefix='/orders', tags=['Orders'])
+app.include_router(storages_router, prefix='/storages', tags=['Storages'])
 
 
 # Deprecated, changed to `lifespan`
@@ -112,7 +112,26 @@ async def prepare_db():
     # --- PRESETS
 
 
-# Deprecated, changed to `lifespan`
-# @app.on_event('shutdown')
+@app.middleware("http")
+async def requests_logging(
+        request: Request, call_next
+):
+    # Check for an existing request ID in the headers
+    request_id = request.headers.get("X-Request-ID", str(uuid4()))  # Use existing or generate a new one
+    # Add the request ID to the logger context or explicitly log it
+    logger.info(f"Incoming request: {request.method} {request.url} | Request ID: {request_id}")
+    # Proceed with the request
+    response = await call_next(request)
+    # Log response completion
+    logger.info(
+        f"Completed request: {request.method} {request.url} |"
+        f" Status: {response.status_code} |"
+        f" Request ID: {request_id}"
+    )
+    # Optionally, add the request ID to the response headers
+    response.headers["X-Request-ID"] = request_id
+    return response
+
+
 async def close_db():
     mongo_client.close_client()

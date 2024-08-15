@@ -26,6 +26,12 @@ async def log_db_record(
     return f' | DB: {db_name}\nDB_Collection:{db_collection}'
 
 
+async def log_db_error_record(
+        error: errors.PyMongoError
+) -> str:
+    return f' | ERROR: {error}'
+
+
 async def get_db_collection(
         client: AsyncIOMotorClient,
         db_name: str,
