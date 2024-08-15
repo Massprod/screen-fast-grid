@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel, Field, field_validator
 from constants import (PS_GRID, PS_SHIPPED, PS_REJECTED,
                        PS_LABORATORY, PS_BASE_PLATFORM, WL_MAX_DIAM, WL_MIN_DIAM,
-                       WS_MIN_WHEELS, WS_MAX_WHEELS)
+                       WS_MIN_WHEELS, WS_MAX_WHEELS, PS_STORAGE)
 
 
 class WheelStatus(str, Enum):
@@ -14,6 +14,7 @@ class WheelStatus(str, Enum):
     basePlatform = PS_BASE_PLATFORM
     grid = PS_GRID
     rejected = PS_REJECTED
+    storage = PS_STORAGE
 
 
 class WheelStackData(BaseModel):
