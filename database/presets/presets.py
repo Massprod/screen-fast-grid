@@ -67,7 +67,7 @@ async def create_pmk_grid_preset() -> dict:
     preset['extra']['laboratory'] = {
         'type': 'laboratory',
         'id': 'laboratory',
-        'order': {},
+        'orders': {},
         'blocked': False,
     }
     return preset
