@@ -446,7 +446,6 @@ async def orders_complete_move_to_laboratory(order_data: dict, db: AsyncIOMotorC
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
     # -3- <- Check destination it should exist and have this order
-    dest_type = order_data['destination']['placementType']
     dest_id = order_data['destination']['placementId']
     dest_element_row = order_data['destination']['rowPlacement']
     dest_element_name = order_data['destination']['columnPlacement']
@@ -647,6 +646,7 @@ async def orders_complete_move_wholestack_from_storage(
         order_data: dict,
         db: AsyncIOMotorClient,
 ) -> ObjectId:
+    storage_id = order_data['source']['placementId']
     source_wheelstack_id: ObjectId = await get_object_id(order_data['affectedWheelStacks']['source'])
     source_wheelstack_data = await db_find_wheelstack_by_object_id(
         source_wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
@@ -665,7 +665,7 @@ async def orders_complete_move_wholestack_from_storage(
     )
     if destination_cell_data is None:
         raise HTTPException(
-            detail=f'Corrupted order, points to non-existing cell '
+            detail=f'Corrupted order, points     to non-existing cell '
                    f'= {destination_row}|{destination_col} in grid = {destination_id}',
             status_code=status.HTTP_404_NOT_FOUND,
         )
@@ -678,10 +678,15 @@ async def orders_complete_move_wholestack_from_storage(
     async with (await db.start_session()) as session:
         async with session.start_transaction():
             # Delete wheelstack from storage
-            await db_storage_delete_placed_wheelstack(
-                destination_id, source_wheelstack_data['_id'], source_wheelstack_data['batchNumber'],
+            del_res = await db_storage_delete_placed_wheelstack(
+                storage_id, source_wheelstack_data['_id'], source_wheelstack_data['batchNumber'],
                 db, DB_PMK_NAME, CLN_STORAGES, session, True
             )
+            if 0 == del_res.modified_count:
+                raise HTTPException(
+                    detail=f'Corrupted Order. `wheelstack` not present in `storage` = {storage_id}',
+                    status_code=status.HTTP_404_NOT_FOUND,
+                )
             # Update wheelstack
             source_wheelstack_data['status'] = PS_GRID
             source_wheelstack_data['placement'] = {
@@ -709,6 +714,91 @@ async def orders_complete_move_wholestack_from_storage(
                 destination_id, destination_row, destination_col, destination_cell_data,
                 db, DB_PMK_NAME, CLN_GRID, session, True
             )
+            completion_time = await time_w_timezone()
+            order_data['status'] = ORDER_STATUS_COMPLETED
+            order_data['lastUpdated'] = completion_time
+            order_data['completedAt'] = completion_time
+            completed_order = await db_create_order(
+                order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+            )
+            await db_delete_order(
+                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            )
+            return completed_order.inserted_id
+
+
+async def orders_complete_move_to_pro_rej_from_storage(
+        db: AsyncIOMotorClient,
+        order_data: dict,
+        processing: bool,
+) -> ObjectId:
+    storage_id = order_data['source']['placementId']
+    source_wheelstack_id: ObjectId = await get_object_id(order_data['affectedWheelStacks']['source'])
+    source_wheelstack_data = await db_find_wheelstack_by_object_id(
+        source_wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
+    )
+    if source_wheelstack_data is None:
+        raise HTTPException(
+            detail=f'Corrupted order, point to non-existing `wheelstack`',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    destination_id = order_data['destination']['placementId']
+    destination_row = order_data['destination']['rowPlacement']
+    # Using it as extraElement name
+    destination_col = order_data['destination']['columnPlacement']
+    destination_extra_element_data = await db_get_grid_extra_cell_data(
+        destination_id, destination_col,
+        db, DB_PMK_NAME, CLN_GRID
+    )
+    if destination_extra_element_data is None:
+        raise HTTPException(
+            detail=f'Corrupted order, points to non-existing extraElement'
+                   f'= {destination_row}|{destination_col} in grid = {destination_id}',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    destination_extra_element_data = destination_extra_element_data['extra'][destination_col]
+    if str(order_data['_id']) not in destination_extra_element_data['orders']:
+        raise HTTPException(
+            detail=f'Corrupted order, points to existing extraElement, but not present in it',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    elements_status = PS_SHIPPED if processing else PS_REJECTED
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            # Delete wheelstack from storage
+            del_res = await db_storage_delete_placed_wheelstack(
+                storage_id, source_wheelstack_data['_id'], source_wheelstack_data['batchNumber'],
+                db, DB_PMK_NAME, CLN_STORAGES, session, True,
+            )
+            if 0 == del_res.modified_count:
+                raise HTTPException(
+                    detail=f'Corrupted Order. `wheelstack` not present in `storage` = {storage_id}',
+                    status_code=status.HTTP_404_NOT_FOUND
+                )
+            # Update wheelstack status
+            source_wheelstack_data['status'] = elements_status
+            source_wheelstack_data['blocked'] = True
+            source_wheelstack_data['rowPlacement'] = destination_row
+            source_wheelstack_data['colPlacement'] = destination_col
+            await db_update_wheelstack(
+                source_wheelstack_data, source_wheelstack_data['_id'],
+                db, DB_PMK_NAME, CLN_WHEELSTACKS, session, True
+            )
+            # Update wheels statuses
+            for wheel in source_wheelstack_data['wheels']:
+                await db_update_wheel_status(
+                    wheel, elements_status, db, DB_PMK_NAME, CLN_WHEELS, session,
+                )
+            # Delete order from extraElement
+            await db_delete_extra_cell_order(
+                destination_id, destination_col, order_data['_id'],
+                db, DB_PMK_NAME, CLN_GRID, session, True
+            )
+            # Delete active order
+            await db_delete_order(
+                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            )
+            # Create completed order
             completion_time = await time_w_timezone()
             order_data['status'] = ORDER_STATUS_COMPLETED
             order_data['lastUpdated'] = completion_time

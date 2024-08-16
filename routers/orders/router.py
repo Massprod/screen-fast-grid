@@ -10,7 +10,8 @@ from routers.orders.orders_completion import (orders_complete_move_wholestack,
                                               orders_complete_move_to_rejected,
                                               orders_complete_move_to_processing,
                                               orders_complete_move_to_laboratory, orders_complete_move_to_storage,
-                                              orders_complete_move_wholestack_from_storage)
+                                              orders_complete_move_wholestack_from_storage,
+                                              orders_complete_move_to_pro_rej_from_storage)
 from routers.orders.orders_cancelation import orders_cancel_basic_extra_element_moves, orders_cancel_move_wholestack, \
     orders_cancel_move_to_storage
 from routers.orders.models.models import CreateMoveOrderRequest, CreateLabOrderRequest, CreateProcessingOrderRequest, \
@@ -273,14 +274,18 @@ async def route_post_create_order_move_from_storage(
     created_order_id: ObjectId | None = None
     if ORDER_MOVE_WHOLE_STACK == data['orderType']:
         created_order_id = await orders_create_move_from_storage_whole_stack(db, data)
-    elif ORDER_MOVE_TO_PROCESSING == data['orderType'] or ORDER_MOVE_TO_REJECTED == data['orderType']:
-        created_order_id = await orders_create_move_to_pro_rej_from_storage(db, data)
+    elif ORDER_MOVE_TO_PROCESSING == data['orderType']:
+        created_order_id = await orders_create_move_to_pro_rej_from_storage(db, data, True)
+    elif ORDER_MOVE_TO_REJECTED == data['orderType']:
+        created_order_id = await orders_create_move_to_pro_rej_from_storage(db, data, False)
     return JSONResponse(
         content={
             'createdId': str(created_order_id)
         },
         status_code=status.HTTP_201_CREATED,
     )
+
+# TODO: ADD BULK processing|rejected
 
 
 @router.post(
@@ -303,10 +308,12 @@ async def route_post_cancel_order(
             status_code=status.HTTP_404_NOT_FOUND,
         )
     if order_data['orderType'] == ORDER_MOVE_WHOLE_STACK:
+        # TODO: Cancellation for a storages
         result = await orders_cancel_move_wholestack(order_data, cancellation_reason, db)
         logger.info(f'Order canceled and moved to `canceledOrders` with `_id` = {result}')
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     elif order_data['orderType'] in BASIC_EXTRA_MOVES:
+        # TODO: Cancellation for a storages
         result = await orders_cancel_basic_extra_element_moves(order_data, cancellation_reason, db)
         logger.info(f'Order canceled and moved to `canceledOrders` with `_id` = {result}')
         return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -343,9 +350,16 @@ async def route_post_complete_order(
         else:
             result = await orders_complete_move_wholestack(order_data, db)
     elif order_data['orderType'] == ORDER_MOVE_TO_PROCESSING:
-        result = await orders_complete_move_to_processing(order_data, db)
+        if PS_STORAGE == order_data['source']['placementType']:
+            result = await orders_complete_move_to_pro_rej_from_storage(db, order_data, True)
+        else:
+            result = await orders_complete_move_to_processing(order_data, db)
     elif order_data['orderType'] == ORDER_MOVE_TO_REJECTED:
-        result = await orders_complete_move_to_rejected(order_data, db)
+        if PS_STORAGE == order_data['source']['placementType']:
+            result = await orders_complete_move_to_pro_rej_from_storage(db, order_data, False)
+        else:
+            result = await orders_complete_move_to_rejected(order_data, db)
+    # TODO: ADD laboratory move from storage
     elif order_data['orderType'] == ORDER_MOVE_TO_LABORATORY:
         result = await orders_complete_move_to_laboratory(order_data, db)
     elif order_data['orderType'] == ORDER_MOVE_TO_STORAGE:
