@@ -139,16 +139,20 @@ async def db_update_wheelstack(
         db_name: str,
         db_collection: str,
         session: AsyncIOMotorClientSession = None,
+        record_change: bool = True,
 ):
-    try:
+    collection = await get_db_collection(db, db_name, db_collection)
+    if record_change:
         new_data['lastChange'] = await time_w_timezone()
-        collection = await get_db_collection(db, db_name, db_collection)
-        res = await collection.update_one(
-            {'_id': wheelstack_object_id},
-            {'$set': new_data},
-            session=session,
-        )
-        return res
+    query = {
+        '_id': wheelstack_object_id,
+    }
+    update = {
+        '$set': new_data
+    }
+    try:
+        result = await collection.update_one(query, update, session=session,)
+        return result
     except PyMongoError as e:
         logger.error(f"Error updating `wheelStack`: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database update error")
