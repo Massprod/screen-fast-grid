@@ -21,6 +21,7 @@ from routers.orders.orders_creation import (orders_create_move_whole_wheelstack,
                                             orders_create_move_to_rejected, orders_create_bulk_move_to_pro_rej_orders,
                                             orders_create_move_to_storage, orders_create_move_from_storage_whole_stack,
                                             orders_create_move_from_storage_whole_stack,
+                                            orders_create_move_to_pro_rej_from_storage,
                                             )
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Path, Query
 from constants import (
@@ -272,6 +273,8 @@ async def route_post_create_order_move_from_storage(
     created_order_id: ObjectId | None = None
     if ORDER_MOVE_WHOLE_STACK == data['orderType']:
         created_order_id = await orders_create_move_from_storage_whole_stack(db, data)
+    elif ORDER_MOVE_TO_PROCESSING == data['orderType'] or ORDER_MOVE_TO_REJECTED == data['orderType']:
+        created_order_id = await orders_create_move_to_pro_rej_from_storage(db, data)
     return JSONResponse(
         content={
             'createdId': str(created_order_id)
