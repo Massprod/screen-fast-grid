@@ -129,6 +129,7 @@ async def db_storage_place_wheelstack(
         db_name: str,
         db_collection: str,
         session: AsyncIOMotorClientSession = None,
+        record_change: bool = True
 ):
     db_info = await log_db_record(db_name, db_collection)
     logger.info(
@@ -144,6 +145,8 @@ async def db_storage_place_wheelstack(
             f'elements.{batch_number}.{wheelstack_id}': wheelstack_id,
         }
     }
+    if record_change:
+        update['$set']['lastChange'] = await time_w_timezone()
     try:
         result = await collection.update_one(query, update, session=session)
         log_mes = f'add operation for `storage` document with name = {storage_object_id}' + db_info
@@ -189,4 +192,40 @@ async def db_storage_check_placed_wheelstack(
         raise HTTPException(
             detail=f'Error while adding new element into `storage`',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+async def db_storage_delete_placed_wheelstack(
+        storage_object_id: ObjectId,
+        wheelstack_object_id: ObjectId,
+        batch_number_object_id: ObjectId,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+        session: AsyncIOMotorClientSession,
+        record_change: bool = True,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': storage_object_id,
+        f'elements.{batch_number_object_id}.{wheelstack_object_id}': {
+            '$exists': True,
+        },
+    }
+    update = {
+        '$unset': {
+            f'elements.{batch_number_object_id}.{wheelstack_object_id}': 1,
+        },
+    }
+    if record_change:
+        update['$set'] = {
+            'lastChange': await time_w_timezone()
+        }
+    try:
+        result = await collection.update_one(query, update, session=session)
+        return result
+    except PyMongoError as error:
+        raise HTTPException(
+            detail=f'Error while deleting placed `wheelstack`',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
