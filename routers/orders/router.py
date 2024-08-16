@@ -9,7 +9,8 @@ from routers.orders.crud import (db_find_order_by_object_id,
 from routers.orders.orders_completion import (orders_complete_move_wholestack,
                                               orders_complete_move_to_rejected,
                                               orders_complete_move_to_processing,
-                                              orders_complete_move_to_laboratory, orders_complete_move_to_storage)
+                                              orders_complete_move_to_laboratory, orders_complete_move_to_storage,
+                                              orders_complete_move_wholestack_from_storage)
 from routers.orders.orders_cancelation import orders_cancel_basic_extra_element_moves, orders_cancel_move_wholestack, \
     orders_cancel_move_to_storage
 from routers.orders.models.models import CreateMoveOrderRequest, CreateLabOrderRequest, CreateProcessingOrderRequest, \
@@ -26,7 +27,7 @@ from constants import (
     ORDER_MOVE_WHOLE_STACK, ORDER_MOVE_TO_LABORATORY,
     ORDER_MOVE_TO_PROCESSING, ORDER_MOVE_TO_REJECTED,
     DB_PMK_NAME, CLN_ACTIVE_ORDERS, BASIC_EXTRA_MOVES,
-    CLN_COMPLETED_ORDERS, CLN_CANCELED_ORDERS, ORDER_MOVE_TO_STORAGE,
+    CLN_COMPLETED_ORDERS, CLN_CANCELED_ORDERS, ORDER_MOVE_TO_STORAGE, PS_STORAGE,
 )
 from utility.utilities import get_object_id
 from loguru import logger
@@ -334,7 +335,10 @@ async def route_post_complete_order(
     log_record: str = f'Order completed and moved to `completedOrders` with `_id` = '
     result: str | ObjectId = ''
     if order_data['orderType'] == ORDER_MOVE_WHOLE_STACK:
-        result = await orders_complete_move_wholestack(order_data, db)
+        if PS_STORAGE == order_data['source']['placementType']:
+            result = await orders_complete_move_wholestack_from_storage(order_data, db)
+        else:
+            result = await orders_complete_move_wholestack(order_data, db)
     elif order_data['orderType'] == ORDER_MOVE_TO_PROCESSING:
         result = await orders_complete_move_to_processing(order_data, db)
     elif order_data['orderType'] == ORDER_MOVE_TO_REJECTED:
