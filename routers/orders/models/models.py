@@ -154,3 +154,14 @@ class CreateBulkProcessingOrderRequest(BaseModel):
                               description='`placementId` to gather `wheelstack`s')
     destination: ProcessingDestination = Field(...,
                                                description='data to identify and validate `destination` as correct one')
+
+
+class CreateMoveToStorageRequest(BaseModel):
+    orderName: str = Field('',
+                           description='Optional name of the `order`')
+    orderDescription: str = Field('',
+                                  description='Optional description of the `order`')
+    source: ProcessingSource = Field(...,
+                                     description='all the data to identify and validate `source` as correct one')
+    storage: str = Field(...,
+                         description='`ObjectId` of the storage to place into')

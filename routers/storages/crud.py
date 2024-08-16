@@ -1,7 +1,8 @@
+from bson import ObjectId
 from loguru import logger
 from fastapi import HTTPException, status
 from pymongo.errors import PyMongoError
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
 from utility.utilities import get_db_collection, time_w_timezone, log_db_record, log_db_error_record
 
 
@@ -112,9 +113,52 @@ async def db_get_storage_by_object_id(
     except PyMongoError as error:
         error_extra: str = await log_db_error_record(error)
         logger.error(
-            f'Error while searching for `storage` document with name = {storage_object_id}' + db_info + error_extra
+            f'Error while searching for `storage` document with `objectId` = {storage_object_id}' + db_info + error_extra
         )
         raise HTTPException(
             detail=f'Error while searching for `storage`',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+async def db_storage_place_wheelstack(
+        storage_object_id: str,
+        wheelstack_id: ObjectId,
+        batch_number: str,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+        session: AsyncIOMotorClientSession = None,
+):
+    db_info = await log_db_record(db_name, db_collection)
+    logger.info(
+        f'Attempt to add a new `wheelstack` = {wheelstack_id} into'
+        f' `storage` with `objectId` = {storage_object_id} ' + db_info
+    )
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': storage_object_id,
+    }
+    update = {
+        '$set': {
+            f'elements.{batch_number}.{wheelstack_id}': wheelstack_id,
+        }
+    }
+    try:
+        result = await collection.update_one(query, update, session=session)
+        log_mes = f'add operation for `storage` document with name = {storage_object_id}' + db_info
+        if 0 == result.modified_count:
+            logger.info(f'Unsuccessful {log_mes}')
+        else:
+            logger.info(f'Successful {log_mes}')
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        logger.error(
+            f'Error while adding new element into `storage`'
+            f' document with `objectId` = {storage_object_id}' + db_info + error_extra
+        )
+        raise HTTPException(
+            detail=f'Error while adding new element into `storage`',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

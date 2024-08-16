@@ -240,3 +240,77 @@ async def orders_cancel_move_wholestack(
                 order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS, session
             )
             return canceled_order.inserted_id
+
+
+async def orders_cancel_move_to_storage(
+        order_data: dict,
+        cancellation_reason: str,
+        db: AsyncIOMotorClient,
+):
+    # Only GRID can be a source for `storage` moves.
+    # -1- <- Check source cell for existence
+    source_id: ObjectId = order_data['source']['placementId']
+    source_row: str = order_data['source']['rowPlacement']
+    source_col: str = order_data['source']['columnPlacement']
+    source_cell_data = await db_get_grid_cell_data(
+        source_id, source_row, source_col, db, DB_PMK_NAME, CLN_GRID
+    )
+    if source_cell_data is None:
+        logger.error(f'{source_row}|{source_col} <- source cell doesnt exist in the `grid` = {source_id}'
+                     f'But given order = {order_data['_id']} marks it as source cell.')
+        raise HTTPException(
+            detail=f'{source_row}|{source_col} <- source cell doesnt exist in the `grid` = {source_id}'
+                   f'But given order = {order_data['_id']} marks it as source cell.',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+    source_cell_data = source_cell_data['rows'][source_row]['columns'][source_col]
+    if source_cell_data['blockedBy'] != order_data['_id']:
+        logger.error(f'Corrupted `order` = {order_data['_id']},'
+                     f' marking cell {source_row}|{source_col} in `grid` {source_id}.'
+                     f'But different order is blocking it {source_cell_data['blockedBy']}')
+        raise HTTPException(
+            detail=f'Corrupted `order` = {order_data['_id']},'
+                   f' marking cell {source_row}|{source_col} in `grid` {source_id}.'
+                   f'But different order is blocking it {source_cell_data['blockedBy']}',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    # -2- <- Check source wheelStack it should exist.
+    source_wheelstack_data = await db_find_wheelstack_by_object_id(
+        source_cell_data['wheelStack'], db, DB_PMK_NAME, CLN_WHEELSTACKS
+    )
+    if source_wheelstack_data is None:
+        logger.error(
+            f'Corrupted cell {source_row}|{source_col} in grid = {source_id}.'
+            f'Marks `wheelStacks` {source_cell_data['wheelStack']} as placed on it, but it doesnt exist.'
+        )
+        raise HTTPException(
+            detail=f'Corrupted cell {source_row}|{source_col} in grid = {source_id}.'
+                   f'Marks `wheelStacks` {source_cell_data['wheelStack']} as placed on it, but it doesnt exist.',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+    # -3- <- Unblock source + Delete everything
+    source_cell_data['blocked'] = False
+    source_cell_data['blockedBy'] = None
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            await db_update_grid_cell_data(
+                source_id, source_row, source_col, source_cell_data,
+                db, DB_PMK_NAME, CLN_GRID, session, True
+            )
+            source_wheelstack_data['blocked'] = False
+            source_wheelstack_data['lastOrder'] = order_data['_id']
+            await db_update_wheelstack(
+                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            )
+            await db_delete_order(
+                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session,
+            )
+            cancellation_time = await time_w_timezone()
+            order_data['status'] = ORDER_STATUS_CANCELED
+            order_data['cancellationReason'] = cancellation_reason if cancellation_reason else "Not specified"
+            order_data['canceledAt'] = cancellation_time
+            order_data['lastUpdated'] = cancellation_time
+            canceled_order = await db_create_order(
+                order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS, session
+            )
+            return canceled_order.inserted_id

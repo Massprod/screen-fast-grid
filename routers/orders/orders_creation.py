@@ -5,7 +5,10 @@ from loguru import logger
 from fastapi import HTTPException, status
 from routers.orders.crud import db_create_order
 from motor.motor_asyncio import AsyncIOMotorClient
-from utility.utilities import get_object_id, time_w_timezone
+
+from routers.storages.crud import db_get_storage_by_object_id
+from utility.utilities import get_object_id, time_w_timezone, orders_creation_attempt_string, \
+    orders_corrupted_cell_non_existing_wheelstack, orders_corrupted_cell_blocked_wheelstack
 from routers.grid.crud import (db_get_grid_cell_data, db_update_grid_cell_data,
                                db_get_grid_extra_cell_data, db_update_extra_cell_data, get_grid_preset_by_object_id,
                                db_append_extra_cell_order, db_append_extra_cell_orders, db_update_grid_cells_data)
@@ -19,7 +22,7 @@ from constants import (PRES_TYPE_GRID, PRES_TYPE_PLATFORM,
                        ORDER_STATUS_PENDING, CLN_ACTIVE_ORDERS,
                        EE_HAND_CRANE, EE_GRID_ROW_NAME, CLN_WHEELS, EE_LABORATORY,
                        ORDER_MOVE_TO_LABORATORY, ORDER_MOVE_TO_PROCESSING, ORDER_MOVE_TO_REJECTED, MSG_TESTS_NOT_DONE,
-                       MSG_TESTS_FAILED)
+                       MSG_TESTS_FAILED, ORDER_MOVE_TO_STORAGE, CLN_STORAGES, PS_STORAGE)
 from routers.batch_numbers.crud import db_find_batch_number
 
 
@@ -760,5 +763,150 @@ async def orders_create_move_to_rejected(db: AsyncIOMotorClient, order_data: dic
             await db_append_extra_cell_order(
                 destination_id, extra_name, created_order_id,
                 db, DB_PMK_NAME, CLN_GRID, session, True
+            )
+            return created_order_id
+
+
+async def orders_create_move_to_storage(db: AsyncIOMotorClient, order_data: dict) -> ObjectId:
+    chosen_placement: str = order_data['source']['placementType']
+    attempt_string: str = await orders_creation_attempt_string(ORDER_MOVE_TO_STORAGE)
+    if PRES_TYPE_GRID != chosen_placement:
+        logger.warning(
+            f'{attempt_string}'
+            f'To move from incorrect `placementType` = {chosen_placement}'
+        )
+        raise HTTPException(
+            detail=f'We can only {ORDER_MOVE_TO_STORAGE} from a `grid`',
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    source_id: ObjectId = await get_object_id(order_data['source']['placementId'])
+    source_row: str = order_data['source']['rowPlacement']
+    source_col: str = order_data['source']['columnPlacement']
+    source_cell_data = await db_get_grid_cell_data(
+        source_id, source_row, source_col, db, DB_PMK_NAME, CLN_GRID
+    )
+    if source_cell_data is None:
+        logger.warning(
+            f'{attempt_string}'
+            f'To move from non existing cell = {source_row}|{source_col}|{source_id}'
+        )
+        raise HTTPException(
+            detail=f'{source_row}|{source_col} <- source cell doesnt exist in the `grid`',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    source_cell_data = source_cell_data['rows'][source_row]['columns'][source_col]
+    if source_cell_data['blocked'] or source_cell_data['blockedBy'] is not None:
+        logger.warning(
+            f'{attempt_string}'
+            f'To move from already blocked cell = {source_row}|{source_col}|{source_id}'
+        )
+        raise HTTPException(
+            detail=f'{source_row}|{source_col} <- source cell already `blocked` by = {source_cell_data['blockedBy']}',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    wheelstack_id: ObjectId = source_cell_data['wheelStack']
+    if wheelstack_id is None:
+        logger.warning(
+            f'{attempt_string}'
+            f'Source cell exists,'
+            f'  but doesnt contain `wheelstack`| cell = {source_row}|{source_col}|{source_id}'
+        )
+        raise HTTPException(
+            detail='Source cell exists, but doesnt contain `wheelstack`',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    source_wheelstack_data = await db_find_wheelstack_by_object_id(
+        wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS,
+    )
+    if source_wheelstack_data is None:
+        logger.error(
+            attempt_string + await orders_corrupted_cell_non_existing_wheelstack(
+                source_row, source_col, chosen_placement, source_id, wheelstack_id
+            )
+        )
+        raise HTTPException(
+            detail=f'Corrupted cell {source_row}|{source_col}, inform someone to fix it.',
+            status_code=status.HTTP_403_FORBIDDEN
+        )
+    if source_wheelstack_data['blocked']:
+        logger.error(
+            attempt_string + await orders_corrupted_cell_blocked_wheelstack(
+                source_row, source_col, chosen_placement, source_id, wheelstack_id
+            )
+        )
+        raise HTTPException(
+            detail=f'Source cell `wheelstack` is blocked by other order = {source_wheelstack_data['lastOrder']}',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    batch_number_data = await db_find_batch_number(
+        source_wheelstack_data['batchNumber'], db, DB_PMK_NAME, CLN_BATCH_NUMBERS,
+    )
+    if batch_number_data is None:
+        logger.warning(
+            f'{attempt_string}'
+            f'With non existing `batchNumber` = {source_wheelstack_data['batchNumber']}'
+        )
+        raise HTTPException(
+            detail=f'Provided `batchNumber`. Not Found.',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    storage_id = await get_object_id(order_data['storage'])
+    storage_data = await db_get_storage_by_object_id(
+        storage_id, False, db, DB_PMK_NAME, CLN_STORAGES
+    )
+    if storage_data is None:
+        logger.warning(
+            f'{attempt_string}'
+            f'With non existing `storage` = {storage_id}'
+        )
+        raise HTTPException(
+            detail=f'Provided `storage`. Not Found.',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    creation_time = await time_w_timezone()
+    order_data['source']['placementId'] = source_id
+    new_order_data = {
+        'orderName': order_data['orderName'],
+        'orderDescription': order_data['orderDescription'],
+        'createdAt': creation_time,
+        'lastUpdated': creation_time,
+        'source': order_data['source'],
+        'destination': {
+            'placementType': PS_STORAGE,
+            'placementId': storage_id,
+            'rowPlacement': '0',
+            'columnPlacement': '0',
+        },
+        'affectedWheelStacks': {
+            'source': source_wheelstack_data['_id'],
+            'destination': None,
+        },
+        'affectedWheels': {
+            'source': source_wheelstack_data['wheels'],
+            'destination': [],
+        },
+        'status': ORDER_STATUS_PENDING,
+        'orderType': ORDER_MOVE_TO_STORAGE,
+    }
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            created_order = await db_create_order(
+                new_order_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            )
+            created_order_id = created_order.inserted_id
+            new_source_cell_data = {
+                'wheelStack': source_wheelstack_data['_id'],
+                'blocked': True,
+                'blockedBy': created_order_id,
+            }
+            await db_update_grid_cell_data(
+                source_id, source_row, source_col, new_source_cell_data,
+                db, DB_PMK_NAME, CLN_GRID, session, True,
+            )
+            source_wheelstack_data['blocked'] = True
+            source_wheelstack_data['lastOrder'] = created_order_id
+            await db_update_wheelstack(
+                source_wheelstack_data, source_wheelstack_data['_id'],
+                db, DB_PMK_NAME, CLN_WHEELSTACKS, session
             )
             return created_order_id
