@@ -208,13 +208,13 @@ async def db_storage_delete_placed_wheelstack(
     collection = await get_db_collection(db, db_name, db_collection)
     query = {
         '_id': storage_object_id,
-        f'elements.{batch_number_object_id}.{wheelstack_object_id}': {
+        f'elements.{batch_number_object_id}.{str(wheelstack_object_id)}': {
             '$exists': True,
         },
     }
     update = {
         '$unset': {
-            f'elements.{batch_number_object_id}.{wheelstack_object_id}': 1,
+            f'elements.{batch_number_object_id}.{str(wheelstack_object_id)}': 1,
         },
     }
     if record_change:
