@@ -32,6 +32,39 @@ async def log_db_error_record(
     return f' | ERROR: {error}'
 
 
+# TODO: Move it all to a separated part
+# Orders
+async def orders_creation_attempt_string(
+        order_type: str,
+) -> str:
+    return f'Attempt to create an order of type {order_type} | '
+
+
+async def orders_corrupted_cell_non_existing_wheelstack(
+        cell_row: str,
+        cell_col: str,
+        placement_type: str,
+        placement_id: str | ObjectId,
+        wheelstack_id: str | ObjectId,
+) -> str:
+    return (f'Corrupted data on cell: row = {cell_row}, col = {cell_col}'
+            f' in a placement of type {placement_type} with `ObjectId` = {placement_id}.'
+            f' Non existing `wheelstack` placed on it = {wheelstack_id}')
+
+
+async def orders_corrupted_cell_blocked_wheelstack(
+        cell_row: str,
+        cell_col: str,
+        placement_type: str,
+        placement_id: str | ObjectId,
+        wheelstack_id: str | ObjectId
+) -> str:
+    return (f'Corrupted data on cell: row = {cell_row}, col = {cell_col}'
+            f' in a placement of type {placement_type} with `ObjectId` = {placement_id}.'
+            f" There's blocked `wheelstack` currently placed on it = {wheelstack_id},"
+            f" but cell is marked as Free.")
+
+
 async def get_db_collection(
         client: AsyncIOMotorClient,
         db_name: str,
