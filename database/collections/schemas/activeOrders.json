@@ -29,7 +29,7 @@
       "properties": {
         "placementType": {
           "bsonType": "string",
-          "enum": ["grid", "basePlatform"],
+          "enum": ["grid", "basePlatform", "storage"],
           "description": "Source type (`grid` or `basePlatform`), from where we're taking it"
         },
         "placementId": {
@@ -52,7 +52,7 @@
       "properties": {
         "placementType": {
           "bsonType": "string",
-          "enum": ["grid"],
+          "enum": ["grid", "storage"],
           "description": "We can move only from `basePlatform` -> `grid` or inside the `grid. Even if we `moveToLaboratory` we still move `wheelStack` to some `extra` element in a `grid` and later it's transitioned to lab"
         },
         "placementId": {
@@ -71,7 +71,7 @@
     },
     "orderType": {
       "bsonType": "string",
-      "enum": ["moveWholeStack", "moveTopWheel", "moveToLaboratory", "mergeWheelStacks", "moveToProcessing", "moveToRejected"],
+      "enum": ["moveWholeStack", "moveTopWheel", "moveToLaboratory", "mergeWheelStacks", "moveToProcessing", "moveToRejected", "moveToStorage"],
       "description": "Type of operation (moveWholeStack, moveTopWheel, moveToLaboratory, mergeWheelStack)"
     },
     "affectedWheelStacks": {

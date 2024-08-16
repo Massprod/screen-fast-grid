@@ -38,7 +38,7 @@
       "properties": {
         "placementType": {
           "bsonType": "string",
-          "enum": ["grid", "basePlatform"],
+          "enum": ["grid", "storage", "basePlatform"],
           "description": "Source type (`grid` or `basePlatform`), from where we're taking it"
         },
         "placementId": {
@@ -61,7 +61,7 @@
       "properties": {
         "placementType": {
           "bsonType": "string",
-          "enum": ["grid", "basePlatform", "laboratory"],
+          "enum": ["grid", "storage"],
           "description": "Destination type (`grid`, `basePlatform`, or `laboratory`), placement to where we're moving it"
         },
         "placementId": {
@@ -80,7 +80,7 @@
     },
     "orderType": {
       "bsonType": "string",
-      "enum": ["moveWholeStack", "moveTopWheel", "moveToLaboratory", "mergeWheelStacks", "moveToProcessing", "moveToRejected"],
+      "enum": ["moveWholeStack", "moveTopWheel", "moveToLaboratory", "mergeWheelStacks", "moveToProcessing", "moveToRejected", "moveToStorage"],
       "description": "Type of operation (moveWholeStack, moveTopWheel, moveToLaboratory, mergeWheelStack)"
     },
     "affectedWheelStacks": {
