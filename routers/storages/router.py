@@ -27,7 +27,7 @@ async def route_post_create_storage(
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
 ):
     exist = await db_get_storage_by_name(
-        storage_name, db, DB_PMK_NAME, CLN_STORAGES,
+        storage_name, False, db, DB_PMK_NAME, CLN_STORAGES,
     )
     if exist:
         raise HTTPException(
@@ -39,7 +39,7 @@ async def route_post_create_storage(
     )
     return JSONResponse(
         content={
-            'createdId': str(storage_id),
+            'createdId': str(storage_id.inserted_id),
         },
         status_code=status.HTTP_201_CREATED,
     )
