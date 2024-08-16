@@ -174,7 +174,7 @@ class CreateMoveToStorageRequest(BaseModel):
 
 
 class FromStorageOrderTypes(str, Enum):
-    moveToProcessing = ORDER_MOVE_TO_STORAGE
+    moveToProcessing = ORDER_MOVE_TO_PROCESSING
     moveToRejected = ORDER_MOVE_TO_REJECTED
     moveWholeStack = ORDER_MOVE_WHOLE_STACK
 
