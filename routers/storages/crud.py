@@ -122,7 +122,7 @@ async def db_get_storage_by_object_id(
 
 
 async def db_storage_place_wheelstack(
-        storage_object_id: str,
+        storage_object_id: ObjectId,
         wheelstack_id: ObjectId,
         batch_number: str,
         db: AsyncIOMotorClient,
@@ -157,6 +157,34 @@ async def db_storage_place_wheelstack(
         logger.error(
             f'Error while adding new element into `storage`'
             f' document with `objectId` = {storage_object_id}' + db_info + error_extra
+        )
+        raise HTTPException(
+            detail=f'Error while adding new element into `storage`',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+async def db_storage_check_placed_wheelstack(
+        storage_object_id: ObjectId,
+        wheelstack_object_id: ObjectId,
+        batch_number_object_id: ObjectId,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': storage_object_id,
+        f'elements.{batch_number_object_id}.{wheelstack_object_id}': wheelstack_object_id,
+    }
+    try:
+        result = await collection.find_one(query)
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        logger.error(
+            f'Error while searching element in `storage`'
+            f' document with `objectId` = {storage_object_id}' + error_extra
         )
         raise HTTPException(
             detail=f'Error while adding new element into `storage`',
