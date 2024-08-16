@@ -1,13 +1,17 @@
 from enum import Enum
 from pydantic import BaseModel, Field
-from constants import (ORDER_MOVE_TOP_WHEEL,
-                       ORDER_MOVE_WHOLE_STACK,
-                       ORDER_MOVE_TO_LABORATORY,
-                       ORDER_MERGE_WHEEL_STACKS,
-                       ORDER_MOVE_TO_REJECTED,
-                       ORDER_MOVE_TO_PROCESSING,
-                       PRES_TYPE_PLATFORM,
-                       PRES_TYPE_GRID)
+from constants import (
+    ORDER_MOVE_TOP_WHEEL,
+    ORDER_MOVE_WHOLE_STACK,
+    ORDER_MOVE_TO_LABORATORY,
+    ORDER_MERGE_WHEEL_STACKS,
+    ORDER_MOVE_TO_REJECTED,
+    ORDER_MOVE_TO_PROCESSING,
+    PRES_TYPE_PLATFORM,
+    PRES_TYPE_GRID,
+    PS_STORAGE,
+    ORDER_MOVE_TO_STORAGE,
+)
 
 
 # MOVE ORDER
@@ -15,11 +19,13 @@ class OrderType(str, Enum):
     moveWholeStack = ORDER_MOVE_WHOLE_STACK
     moveTopWheel = ORDER_MOVE_TOP_WHEEL
     mergeWheelStacks = ORDER_MERGE_WHEEL_STACKS
+    moveToStorage = ORDER_MOVE_TO_STORAGE
 
 
 class SourcePlacementType(str, Enum):
     grid = PRES_TYPE_GRID
     basePlatform = PRES_TYPE_PLATFORM
+    storage = PS_STORAGE
 
 
 class Source(BaseModel):
@@ -137,8 +143,8 @@ class CreateProcessingOrderRequest(BaseModel):
 
 
 class OutOrderTypes(str, Enum):
-    moveToReProcessing = ORDER_MOVE_TO_PROCESSING
-    moveToProcessing = ORDER_MOVE_TO_REJECTED
+    moveToProcessing = ORDER_MOVE_TO_PROCESSING
+    moveToRejected = ORDER_MOVE_TO_REJECTED
 
 
 class CreateBulkProcessingOrderRequest(BaseModel):
@@ -165,3 +171,24 @@ class CreateMoveToStorageRequest(BaseModel):
                                      description='all the data to identify and validate `source` as correct one')
     storage: str = Field(...,
                          description='`ObjectId` of the storage to place into')
+
+
+class FromStorageOrderTypes(str, Enum):
+    moveToProcessing = ORDER_MOVE_TO_STORAGE
+    moveToRejected = ORDER_MOVE_TO_REJECTED
+    moveWholeStack = ORDER_MOVE_WHOLE_STACK
+
+
+class SourceFromStorage(BaseModel):
+    storageId: str = Field(...)
+    wheelstackId: str = Field(...)
+
+
+class CreateMoveFromStorageRequest(BaseModel):
+    orderName: str = Field('',
+                           description='Optional name of the `order`')
+    orderDescription: str = Field('',
+                                  description='Optional description of the `order`')
+    source: SourceFromStorage = Field(...)
+    destination: Destination = Field(...)
+    orderType: FromStorageOrderTypes = Field(...)

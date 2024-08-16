@@ -13,18 +13,21 @@ from routers.orders.orders_completion import (orders_complete_move_wholestack,
 from routers.orders.orders_cancelation import orders_cancel_basic_extra_element_moves, orders_cancel_move_wholestack, \
     orders_cancel_move_to_storage
 from routers.orders.models.models import CreateMoveOrderRequest, CreateLabOrderRequest, CreateProcessingOrderRequest, \
-    CreateBulkProcessingOrderRequest, CreateMoveToStorageRequest
+    CreateBulkProcessingOrderRequest, CreateMoveToStorageRequest, CreateMoveFromStorageRequest
 from routers.orders.orders_creation import (orders_create_move_whole_wheelstack,
                                             orders_create_move_to_laboratory,
                                             orders_create_move_to_processing,
                                             orders_create_move_to_rejected, orders_create_bulk_move_to_pro_rej_orders,
-                                            orders_create_move_to_storage,
+                                            orders_create_move_to_storage, orders_create_move_from_storage_whole_stack,
+                                            orders_create_move_from_storage_whole_stack,
                                             )
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Path, Query
-from constants import (ORDER_MOVE_WHOLE_STACK, ORDER_MOVE_TO_LABORATORY,
-                       ORDER_MOVE_TO_PROCESSING, ORDER_MOVE_TO_REJECTED,
-                       DB_PMK_NAME, CLN_ACTIVE_ORDERS, BASIC_EXTRA_MOVES,
-                       CLN_COMPLETED_ORDERS, CLN_CANCELED_ORDERS, ORDER_MOVE_TO_STORAGE)
+from constants import (
+    ORDER_MOVE_WHOLE_STACK, ORDER_MOVE_TO_LABORATORY,
+    ORDER_MOVE_TO_PROCESSING, ORDER_MOVE_TO_REJECTED,
+    DB_PMK_NAME, CLN_ACTIVE_ORDERS, BASIC_EXTRA_MOVES,
+    CLN_COMPLETED_ORDERS, CLN_CANCELED_ORDERS, ORDER_MOVE_TO_STORAGE,
+)
 from utility.utilities import get_object_id
 from loguru import logger
 
@@ -134,24 +137,22 @@ async def route_get_all_orders(
     description='Creates a new order with a chosen type, validates if it can be executed',
     name='New Order',
 )
-async def route_post_create_order(
+async def route_post_create_order_move(
         order_data: CreateMoveOrderRequest = Body(...,
                                                   description='all required data for a new `order`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
 ):
-    # TODO: `moveTopWheel` and `mergeWheelStacks` are extra orders with is not required.
-    #   but it's going to be a good practice and useful to do.
-    #   Return and add them, after completing everything else (maybe).
+    created_order_id: ObjectId | None = None
     data = order_data.model_dump()
     if ORDER_MOVE_WHOLE_STACK == data['orderType']:
         logger.info(f'Creating order of type = `{ORDER_MOVE_WHOLE_STACK}`')
         created_order_id = await orders_create_move_whole_wheelstack(db, data)
-        return JSONResponse(
-            content={
-                '_id': str(created_order_id),
-            },
-            status_code=status.HTTP_201_CREATED,
-        )
+    return JSONResponse(
+        content={
+            '_id': str(created_order_id),
+        },
+        status_code=status.HTTP_201_CREATED,
+    )
 
 
 @router.post(
@@ -239,7 +240,7 @@ async def route_post_create_order_move_to_rejected(
 
 
 @router.post(
-    path='/create/storage',
+    path='/create/storage/move_to',
     description=f'Creates a new order of type {ORDER_MOVE_TO_STORAGE}',
     name='New Order',
 )
@@ -252,6 +253,27 @@ async def route_post_create_order_move_to_storage(
     return JSONResponse(
         content={
             'createdOrder': str(created_order_id),
+        },
+        status_code=status.HTTP_201_CREATED,
+    )
+
+
+@router.post(
+    path='/create/storage/move_from',
+    description=f'Creates a new order of type {ORDER_MOVE_WHOLE_STACK}',
+    name='New Order',
+)
+async def route_post_create_order_move_from_storage(
+        order_data: CreateMoveFromStorageRequest = Body(...),
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+):
+    data = order_data.model_dump()
+    created_order_id: ObjectId | None = None
+    if ORDER_MOVE_WHOLE_STACK == data['orderType']:
+        created_order_id = await orders_create_move_from_storage_whole_stack(db, data)
+    return JSONResponse(
+        content={
+            'createdId': str(created_order_id)
         },
         status_code=status.HTTP_201_CREATED,
     )
