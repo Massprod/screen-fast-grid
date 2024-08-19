@@ -22,7 +22,7 @@ from constants import (PRES_TYPE_GRID, PRES_TYPE_PLATFORM,
                        ORDER_STATUS_PENDING, CLN_ACTIVE_ORDERS, ORDER_MOVE_WHOLE_STACK,
                        EE_HAND_CRANE, EE_GRID_ROW_NAME, CLN_WHEELS, EE_LABORATORY,
                        ORDER_MOVE_TO_LABORATORY, ORDER_MOVE_TO_PROCESSING, ORDER_MOVE_TO_REJECTED, MSG_TESTS_NOT_DONE,
-                       MSG_TESTS_FAILED, ORDER_MOVE_TO_STORAGE, CLN_STORAGES, PS_STORAGE)
+                       MSG_TESTS_FAILED, ORDER_MOVE_TO_STORAGE, CLN_STORAGES, PS_STORAGE, PS_GRID)
 from routers.batch_numbers.crud import db_find_batch_number
 
 
@@ -517,7 +517,7 @@ async def process_wheelstack(
             'columnPlacement': cur_wheelstack_col,
         },
         'destination': {
-            'placementType': wheelstack_data['placement']['type'],
+            'placementType': PS_GRID,
             'placementId': destination_id,
             'rowPlacement': EE_GRID_ROW_NAME,
             'columnPlacement': destination_element_name,
@@ -563,6 +563,7 @@ async def process_wheelstack(
 async def orders_create_bulk_move_to_pro_rej_orders(order_req_data: dict, db: AsyncIOMotorClient):
     batch_number = order_req_data['batchNumber']
     placement_id = order_req_data['placement_id']
+    placement_type = order_req_data['placementType']
     batch_number_data = await db_find_batch_number(batch_number, db, DB_PMK_NAME, CLN_BATCH_NUMBERS)
     if batch_number_data is None:
         raise HTTPException(
@@ -584,7 +585,7 @@ async def orders_create_bulk_move_to_pro_rej_orders(order_req_data: dict, db: As
         )
     placement_object_id = await get_object_id(placement_id)
     all_available = await db_find_all_processing_available(
-        batch_number, placement_object_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
+        batch_number, placement_object_id, placement_type, db, DB_PMK_NAME, CLN_WHEELSTACKS
     )
     destination_id = await get_object_id(order_req_data['destination']['placementId'])
     destination_element_name = order_req_data['destination']['elementName']
@@ -612,9 +613,10 @@ async def orders_create_bulk_move_to_pro_rej_orders(order_req_data: dict, db: As
                 destination_id, destination_element_name, orders,
                 db, DB_PMK_NAME, CLN_GRID, session, False
             )
-            await db_update_grid_cells_data(
-                placement_object_id, results, db, DB_PMK_NAME, CLN_GRID, session, record_change=True,
-            )
+            if PS_GRID == order_req_data['placementType']:
+                await db_update_grid_cells_data(
+                    placement_object_id, results, db, DB_PMK_NAME, CLN_GRID, session, record_change=True,
+                )
             return orders
 # ---
 

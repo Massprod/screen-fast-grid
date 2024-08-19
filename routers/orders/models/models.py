@@ -10,7 +10,7 @@ from constants import (
     PRES_TYPE_PLATFORM,
     PRES_TYPE_GRID,
     PS_STORAGE,
-    ORDER_MOVE_TO_STORAGE,
+    ORDER_MOVE_TO_STORAGE, PS_GRID,
 )
 
 
@@ -148,6 +148,11 @@ class OutOrderTypes(str, Enum):
     moveToRejected = ORDER_MOVE_TO_REJECTED
 
 
+class BulkPlacements(str, Enum):
+    grid = PS_GRID
+    storage = PS_STORAGE
+
+
 class CreateBulkProcessingOrderRequest(BaseModel):
     orderName: str = Field('',
                            description='Optional name of the `order`')
@@ -159,6 +164,8 @@ class CreateBulkProcessingOrderRequest(BaseModel):
                              description='`batchNumber` to gather `wheelstack`s by')
     placement_id: str = Field(...,
                               description='`placementId` to gather `wheelstack`s')
+    placementType: BulkPlacements = Field(...,
+                                          description='`placementType` to gather `wheelstack`s')
     destination: ProcessingDestination = Field(...,
                                                description='data to identify and validate `destination` as correct one')
 
@@ -197,4 +204,3 @@ class CreateMoveFromStorageRequest(BaseModel):
     orderType: FromStorageOrderTypes = Field(...)
     chosenWheel: str = Field(None,
                              description='Chosen wheel to move, only used with `orderType` == `moveToLaboratory`')
-

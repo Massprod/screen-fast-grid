@@ -50,6 +50,7 @@ async def db_find_all_wheelstacks(
 async def db_find_all_processing_available(
         batch_number: str,
         placement_id: ObjectId,
+        placement_type: str,
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str
@@ -58,11 +59,11 @@ async def db_find_all_processing_available(
     query = {
         'batchNumber': batch_number,
         'placement': {
-            'type': PRES_TYPE_GRID,
+            'type': placement_type,
             'placementId': placement_id,
         },
         'blocked': False,
-        'status': PRES_TYPE_GRID,
+        'status': placement_type,
     }
     try:
         result = await collection.find(query).to_list(length=None)
