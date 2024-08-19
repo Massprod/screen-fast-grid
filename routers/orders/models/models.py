@@ -179,6 +179,7 @@ class FromStorageOrderTypes(str, Enum):
     moveToRejected = ORDER_MOVE_TO_REJECTED
     moveWholeStack = ORDER_MOVE_WHOLE_STACK
     moveToStorage = ORDER_MOVE_TO_STORAGE
+    moveToLaboratory = ORDER_MOVE_TO_LABORATORY
 
 
 class SourceFromStorage(BaseModel):
@@ -194,3 +195,6 @@ class CreateMoveFromStorageRequest(BaseModel):
     source: SourceFromStorage = Field(...)
     destination: Destination = Field(...)
     orderType: FromStorageOrderTypes = Field(...)
+    chosenWheel: str = Field(None,
+                             description='Chosen wheel to move, only used with `orderType` == `moveToLaboratory`')
+

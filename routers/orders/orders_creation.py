@@ -1216,3 +1216,88 @@ async def orders_create_move_from_storage_to_storage_whole_stack(
                 db, DB_PMK_NAME, CLN_WHEELSTACKS, session, True
             )
             return created_order_id
+
+
+async def orders_create_move_from_storage_to_lab(
+        db: AsyncIOMotorClient,
+        order_data: dict,
+) -> ObjectId:
+    source_storage_id: ObjectId = await get_object_id(order_data['source']['storageId'])
+    source_storage_data = await db_get_storage_by_object_id(
+        source_storage_id, False, db, DB_PMK_NAME, CLN_STORAGES
+    )
+    if source_storage_data is None:
+        raise HTTPException(
+            detail='source storage Not Found',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    destination_id: ObjectId = await get_object_id(order_data['destination']['placementId'])
+    destination_extra_element = order_data['destination']['columnPlacement']
+    destination_exists = await db_get_grid_extra_cell_data(
+        destination_id, destination_extra_element, db, DB_PMK_NAME, CLN_GRID
+    )
+    if destination_exists is None:
+        raise HTTPException(
+            detail='destination extra cell Not Found',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    source_wheelstack_id: ObjectId = await get_object_id(order_data['source']['wheelstackId'])
+    source_wheelstack_data = await db_find_wheelstack_by_object_id(
+        source_wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
+    )
+    if source_wheelstack_data is None:
+        raise HTTPException(
+            detail='source wheelstack Not Found',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    creation_time = await time_w_timezone()
+    chosen_wheel_id: ObjectId = await get_object_id(order_data['chosenWheel'])
+    if chosen_wheel_id not in source_wheelstack_data['wheels']:
+        raise HTTPException(
+            detail='source wheelstack doesnt contain `chosenWheel`',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    new_order = {
+        'orderName': order_data['orderName'],
+        'orderDescription': order_data['orderDescription'],
+        'createdAt': creation_time,
+        'lastUpdated': creation_time,
+        'source': {
+            'placementType': PS_STORAGE,
+            'placementId': source_storage_id,
+            'rowPlacement': '0',
+            'columnPlacement': '0',
+        },
+        'destination': {
+            'placementType': order_data['destination']['placementType'],
+            'placementId': destination_id,
+            'rowPlacement': EE_GRID_ROW_NAME,
+            'columnPlacement': order_data['destination']['columnPlacement'],
+        },
+        'affectedWheelStacks': {
+            'source': source_wheelstack_data['_id'],
+            'destination': None,
+        },
+        'affectedWheels': {
+            'source': [chosen_wheel_id],
+            'destination': [],
+        },
+        'status': ORDER_STATUS_PENDING,
+        'orderType': ORDER_MOVE_TO_LABORATORY,
+    }
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            created_order = await db_create_order(
+                new_order, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            )
+            created_order_id = created_order.inserted_id
+            source_wheelstack_data['blocked'] = True
+            source_wheelstack_data['lastOrder'] = created_order_id
+            await db_update_wheelstack(
+                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            )
+            await db_append_extra_cell_order(
+                destination_id, destination_extra_element, created_order_id,
+                db, DB_PMK_NAME, CLN_GRID, session, True
+            )
+            return created_order_id

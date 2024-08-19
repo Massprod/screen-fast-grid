@@ -854,3 +854,54 @@ async def orders_complete_move_from_storage_to_storage(
                 order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
             )
             return created_order.inserted_id
+
+
+async def orders_complete_move_from_storage_to_lab(
+        order_data: dict,
+        db: AsyncIOMotorClient,
+) -> ObjectId:
+    completion_time = await time_w_timezone()
+    order_data['status'] = ORDER_STATUS_COMPLETED
+    order_data['completedAt'] = completion_time
+    order_data['lastUpdated'] = completion_time
+    source_storage_id = await get_object_id(order_data['source']['placementId'])
+    source_wheelstack_id = await get_object_id(order_data['affectedWheelStacks']['source'])
+    source_wheelstack_data = await db_find_wheelstack_by_object_id(
+        source_wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
+    )
+    if source_wheelstack_data is None:
+        raise HTTPException(
+            detail='source wheelstack Not Found',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    chosen_wheel_id = order_data['affectedWheels']['source'][0]
+    try:
+        source_wheelstack_data['wheels'].remove(chosen_wheel_id)
+    except ValueError:
+        raise HTTPException(
+            detail='chosenWheel not present in the wheelstack',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    source_wheelstack_data['blocked'] = False
+    source_wheelstack_data['lastOrder'] = order_data['_id']
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            await db_delete_order(
+                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            )
+            await db_update_wheelstack(
+                source_wheelstack_data, source_wheelstack_data['_id'],
+                db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            )
+            completed_order = await db_create_order(
+                order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session,
+            )
+            lab_wheel_data = await db_find_wheel_by_object_id(
+                chosen_wheel_id, db, DB_PMK_NAME, CLN_WHEELS, session
+            )
+            lab_wheel_data['wheelStack'] = None
+            lab_wheel_data['status'] = PS_LABORATORY
+            await db_update_wheel(
+                chosen_wheel_id, lab_wheel_data, db, DB_PMK_NAME, CLN_WHEELS, session
+            )
+            return completed_order.inserted_id
