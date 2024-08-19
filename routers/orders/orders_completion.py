@@ -807,3 +807,50 @@ async def orders_complete_move_to_pro_rej_from_storage(
                 order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
             )
             return completed_order.inserted_id
+
+
+async def orders_complete_move_from_storage_to_storage(
+        order_data: dict,
+        db: AsyncIOMotorClient,
+) -> ObjectId:
+    source_wheelstack_id: ObjectId = await get_object_id(order_data['affectedWheelStacks']['source'])
+    source_wheelstack_data = await db_find_wheelstack_by_object_id(
+        source_wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
+    )
+    destination_storage_id = await get_object_id(order_data['destination']['placementId'])
+    dest_exists = await db_get_storage_by_object_id(
+        destination_storage_id, False, db, DB_PMK_NAME, CLN_STORAGES
+    )
+    if dest_exists is None:
+        raise HTTPException(
+            detail='Destination Not Found',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    source_wheelstack_data['placement']['type'] = PS_STORAGE
+    source_wheelstack_data['placement']['placementId'] = dest_exists['_id']
+    source_wheelstack_data['blocked'] = False
+    completion_time = await time_w_timezone()
+    order_data['completedAt'] = completion_time
+    order_data['status'] = ORDER_STATUS_COMPLETED
+    order_data['lastUpdated'] = completion_time
+    source_storage_id = await get_object_id(order_data['source']['placementId'])
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            await db_delete_order(
+                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            )
+            await db_storage_delete_placed_wheelstack(
+                source_storage_id, source_wheelstack_data['_id'], source_wheelstack_data['batchNumber'],
+                db, DB_PMK_NAME, CLN_STORAGES, session, True
+            )
+            await db_storage_place_wheelstack(
+                destination_storage_id, source_wheelstack_id, source_wheelstack_data['batchNumber'],
+                db, DB_PMK_NAME, CLN_STORAGES, session, True
+            )
+            await db_update_wheelstack(
+                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session,
+            )
+            created_order = await db_create_order(
+                order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+            )
+            return created_order.inserted_id

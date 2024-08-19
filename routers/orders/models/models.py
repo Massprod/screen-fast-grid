@@ -41,6 +41,7 @@ class Source(BaseModel):
 
 class DestinationPlacementType(str, Enum):
     grid = PRES_TYPE_GRID
+    storage = PS_STORAGE
 
 
 class Destination(BaseModel):
@@ -177,6 +178,7 @@ class FromStorageOrderTypes(str, Enum):
     moveToProcessing = ORDER_MOVE_TO_PROCESSING
     moveToRejected = ORDER_MOVE_TO_REJECTED
     moveWholeStack = ORDER_MOVE_WHOLE_STACK
+    moveToStorage = ORDER_MOVE_TO_STORAGE
 
 
 class SourceFromStorage(BaseModel):

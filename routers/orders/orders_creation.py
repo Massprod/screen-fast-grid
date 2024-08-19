@@ -10,7 +10,7 @@ from routers.storages.crud import db_get_storage_by_object_id, db_storage_check_
 from utility.utilities import get_object_id, time_w_timezone, orders_creation_attempt_string, \
     orders_corrupted_cell_non_existing_wheelstack, orders_corrupted_cell_blocked_wheelstack
 from routers.grid.crud import (db_get_grid_cell_data, db_update_grid_cell_data,
-                               db_get_grid_extra_cell_data, db_update_extra_cell_data, get_grid_preset_by_object_id,
+                               db_get_grid_extra_cell_data, get_grid_preset_by_object_id,
                                db_append_extra_cell_order, db_append_extra_cell_orders, db_update_grid_cells_data)
 from routers.wheelstacks.crud import db_find_wheelstack_by_object_id, db_update_wheelstack, \
     db_find_all_processing_available
@@ -696,7 +696,6 @@ async def orders_create_move_to_rejected(db: AsyncIOMotorClient, order_data: dic
     #  2. Check for it not being `blocked` and being of correct type `EE_HAND_CRANE`.
     destination_id = await get_object_id(order_data['destination']['placementId'])
     extra_name = order_data['destination']['elementName']
-    # TODO: Change to just add a single record, not a whole copy of existed one.
     destination_cell_data = await db_get_grid_extra_cell_data(
         destination_id, extra_name, db, DB_PMK_NAME, CLN_GRID
     )
@@ -1129,5 +1128,91 @@ async def orders_create_move_to_pro_rej_from_storage(
             await db_append_extra_cell_order(
                 destination_id, destination_col, created_order_id,
                 db, DB_PMK_NAME, CLN_GRID, session, True
+            )
+            return created_order_id
+
+
+async def orders_create_move_from_storage_to_storage_whole_stack(
+        db: AsyncIOMotorClient,
+        order_data: dict,
+) -> ObjectId:
+    source_wheelstack_id: ObjectId = await get_object_id(order_data['source']['wheelstackId'])
+    source_wheelstack_data = await db_find_wheelstack_by_object_id(
+        source_wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS,
+    )
+    if source_wheelstack_data is None:
+        raise HTTPException(
+            detail='source wheelstack Not Found',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    if source_wheelstack_data['blocked']:
+        raise HTTPException(
+            detail=f'`wheelstack` is already blocked',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    source_storage_id: ObjectId = await get_object_id(order_data['source']['storageId'])
+    source_present = await db_storage_check_placed_wheelstack(
+        source_storage_id, source_wheelstack_id, source_wheelstack_data['batchNumber'],
+        db, DB_PMK_NAME, CLN_STORAGES,
+    )
+    if source_present is None:
+        raise HTTPException(
+            detail=f'`wheelstack` exists but not placed in the `storage` = {source_storage_id}',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    destination_storage_id = await get_object_id(order_data['destination']['placementId'])
+    destination_present = await db_get_storage_by_object_id(
+        destination_storage_id, False, db, DB_PMK_NAME, CLN_STORAGES
+    )
+    if source_storage_id == destination_storage_id:
+        raise HTTPException(
+            detail='Already present in destination',
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    if destination_present is None:
+        raise HTTPException(
+            detail=f'storage` = {destination_storage_id} Not Found',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    creation_time = await time_w_timezone()
+    new_order_data = {
+        'orderName': order_data['orderName'],
+        'orderDescription': order_data['orderDescription'],
+        'source': {
+            'placementType': PS_STORAGE,
+            'placementId': source_storage_id,
+            'rowPlacement': '0',
+            'columnPlacement': '0',
+        },
+        'destination': {
+            'placementType': PS_STORAGE,
+            'placementId': destination_storage_id,
+            'rowPlacement': '0',
+            'columnPlacement': '0',
+        },
+        'createdAt': creation_time,
+        'lastUpdated': creation_time,
+        'affectedWheelStacks': {
+            'source': source_wheelstack_data['_id'],
+            'destination': None,
+        },
+        'affectedWheels': {
+            'source': source_wheelstack_data['wheels'],
+            'destination': [],
+        },
+        'status': ORDER_STATUS_PENDING,
+        'orderType': ORDER_MOVE_TO_STORAGE,
+    }
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            created_order_id = await db_create_order(
+                new_order_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session,
+            )
+            created_order_id = created_order_id.inserted_id
+            source_wheelstack_data['blocked'] = True
+            source_wheelstack_data['lastOrder'] = created_order_id
+            await db_update_wheelstack(
+                source_wheelstack_data, source_wheelstack_data['_id'],
+                db, DB_PMK_NAME, CLN_WHEELSTACKS, session, True
             )
             return created_order_id
