@@ -84,7 +84,7 @@ async def db_get_storage_by_name(
 
 
 async def db_get_storage_by_object_id(
-        storage_object_id: str,
+        storage_object_id: ObjectId,
         include_data: bool,
         db: AsyncIOMotorClient,
         db_name: str,
