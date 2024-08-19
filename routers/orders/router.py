@@ -13,7 +13,7 @@ from routers.orders.orders_completion import (orders_complete_move_wholestack,
                                               orders_complete_move_wholestack_from_storage,
                                               orders_complete_move_to_pro_rej_from_storage)
 from routers.orders.orders_cancelation import orders_cancel_basic_extra_element_moves, orders_cancel_move_wholestack, \
-    orders_cancel_move_to_storage
+    orders_cancel_move_to_storage, orders_cancel_move_from_storage_to_grid
 from routers.orders.models.models import CreateMoveOrderRequest, CreateLabOrderRequest, CreateProcessingOrderRequest, \
     CreateBulkProcessingOrderRequest, CreateMoveToStorageRequest, CreateMoveFromStorageRequest
 from routers.orders.orders_creation import (orders_create_move_whole_wheelstack,
@@ -307,22 +307,27 @@ async def route_post_cancel_order(
             detail=f'Order with `objectId` = {order_id}. Not Found.',
             status_code=status.HTTP_404_NOT_FOUND,
         )
+    result = None
     if order_data['orderType'] == ORDER_MOVE_WHOLE_STACK:
-        # TODO: Cancellation for a storages
-        result = await orders_cancel_move_wholestack(order_data, cancellation_reason, db)
-        logger.info(f'Order canceled and moved to `canceledOrders` with `_id` = {result}')
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # TODO: ADD moves between storages
+        if (order_data['source']['placementType'] == PS_STORAGE
+                and order_data['destination']['placementType'] == PS_STORAGE):
+            pass
+        elif order_data['source']['placementType'] == PS_STORAGE:
+            result = await orders_cancel_move_from_storage_to_grid(
+                order_data, cancellation_reason, db
+            )
+        else:
+            result = await orders_cancel_move_wholestack(order_data, cancellation_reason, db)
     elif order_data['orderType'] in BASIC_EXTRA_MOVES:
         # TODO: Cancellation for a storages
         result = await orders_cancel_basic_extra_element_moves(order_data, cancellation_reason, db)
-        logger.info(f'Order canceled and moved to `canceledOrders` with `_id` = {result}')
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
     elif order_data['orderType'] == ORDER_MOVE_TO_STORAGE:
         result = await orders_cancel_move_to_storage(
             order_data, cancellation_reason, db
         )
-        logger.info(f'Order canceled and moved to `canceledOrders` with `_id` = {result}')
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    logger.info(f'Order canceled and moved to `canceledOrders` with `_id` = {result}')
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(
@@ -362,6 +367,7 @@ async def route_post_complete_order(
     # TODO: ADD laboratory move from storage
     elif order_data['orderType'] == ORDER_MOVE_TO_LABORATORY:
         result = await orders_complete_move_to_laboratory(order_data, db)
+    # TODO: ADD storage move from storage
     elif order_data['orderType'] == ORDER_MOVE_TO_STORAGE:
         result = await orders_complete_move_to_storage(order_data, db)
     logger.info(log_record + str(result))

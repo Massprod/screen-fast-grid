@@ -314,3 +314,59 @@ async def orders_cancel_move_to_storage(
                 order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS, session
             )
             return canceled_order.inserted_id
+
+
+async def orders_cancel_move_from_storage_to_grid(
+        order_data: dict,
+        cancellation_reason: str,
+        db: AsyncIOMotorClient,
+):
+    cancellation_time = await time_w_timezone()
+    order_data['status'] = ORDER_STATUS_CANCELED
+    order_data['cancellationReason'] = cancellation_reason
+    order_data['canceledAt'] = cancellation_time
+    order_data['lastUpdated'] = cancellation_time
+    dest_id = order_data['destination']['placementId']
+    dest_row = order_data['destination']['rowPlacement']
+    dest_col = order_data['destination']['columnPlacement']
+    destination_cell_data = await db_get_grid_cell_data(
+        dest_id, dest_row, dest_col, db, DB_PMK_NAME, CLN_GRID
+    )
+    if destination_cell_data is None:
+        raise HTTPException(
+            detail='destination cell Not Found',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    destination_cell_data = destination_cell_data['rows'][dest_row]['columns'][dest_col]
+    destination_cell_data['blocked'] = False
+    destination_cell_data['blockedBy'] = None
+    source_wheelstack_data = await db_find_wheelstack_by_object_id(
+        order_data['affectedWheelStacks']['source'], db, DB_PMK_NAME, CLN_WHEELSTACKS
+    )
+    if source_wheelstack_data is None:
+        raise HTTPException(
+            detail=f'`wheelstack` Not Found',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    source_wheelstack_data['blocked'] = False
+    source_wheelstack_data['lastOrder'] = order_data['_id']
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            await db_update_grid_cell_data(
+                dest_id, dest_row, dest_col, destination_cell_data,
+                db, DB_PMK_NAME, CLN_GRID, session, True
+            )
+            await db_update_wheelstack(
+                source_wheelstack_data, source_wheelstack_data['_id'],
+                db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            )
+            await db_delete_order(
+                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session,
+            )
+            canceled_order = await db_create_order(
+                order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS, session
+            )
+            return canceled_order.inserted_id
+
+
+# TODO: ADD cancellation for moveFromStorage -> processing|rejected
