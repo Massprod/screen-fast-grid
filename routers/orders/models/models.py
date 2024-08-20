@@ -162,7 +162,7 @@ class CreateBulkProcessingOrderRequest(BaseModel):
                                      description='Order type process|reject')
     batchNumber: str = Field(...,
                              description='`batchNumber` to gather `wheelstack`s by')
-    placement_id: str = Field(...,
+    placement_id: str = Field('',
                               description='`placementId` to gather `wheelstack`s')
     placementType: BulkPlacements = Field(...,
                                           description='`placementType` to gather `wheelstack`s')

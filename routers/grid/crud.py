@@ -522,7 +522,7 @@ async def db_append_extra_cell_orders(
 
 async def db_update_grid_cells_data(
         grid_id: ObjectId,
-        new_cells_data,
+        new_cells_data: list,
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
@@ -534,11 +534,12 @@ async def db_update_grid_cells_data(
         '_id': grid_id,
     }
     update = {
-        '$set': {
-            **{f'rows.{cell_data['sourceRow']}'
-               f'.columns.{cell_data['sourceCol']}': cell_data['newSourceCellData'] for cell_data in new_cells_data},
-        }
+        '$set': {}
     }
+    for cell_data in new_cells_data:
+        update['$set'][
+            f'rows.{cell_data['sourceRow']}.columns.{cell_data['sourceCol']}'
+        ] = cell_data['newSourceCellData']
     if record_change:
         update['$set']['lastChange'] = await time_w_timezone()
     try:

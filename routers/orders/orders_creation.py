@@ -13,7 +13,7 @@ from routers.grid.crud import (db_get_grid_cell_data, db_update_grid_cell_data,
                                db_get_grid_extra_cell_data, get_grid_preset_by_object_id,
                                db_append_extra_cell_order, db_append_extra_cell_orders, db_update_grid_cells_data)
 from routers.wheelstacks.crud import db_find_wheelstack_by_object_id, db_update_wheelstack, \
-    db_find_all_processing_available
+    db_find_all_pro_rej_available_in_placement, db_find_all_pro_rej_available
 from routers.base_platform.crud import db_get_platform_cell_data, db_update_platform_cell_data
 from routers.wheels.crud import db_find_wheel_by_object_id
 from constants import (PRES_TYPE_GRID, PRES_TYPE_PLATFORM,
@@ -504,6 +504,7 @@ async def process_wheelstack(
     cur_wheelstack_row = wheelstack_data['rowPlacement']
     cur_wheelstack_col = wheelstack_data['colPlacement']
     cur_wheelstack_placement_id = wheelstack_data['placement']['placementId']
+    cur_wheelstack_placement_type = wheelstack_data['placement']['type']
     creation_time = await time_w_timezone()
     order_data = {
         'orderName': order_req_data['orderName'],
@@ -511,7 +512,7 @@ async def process_wheelstack(
         'createdAt': creation_time,
         'lastUpdated': creation_time,
         'source': {
-            'placementType': wheelstack_data['placement']['type'],
+            'placementType': cur_wheelstack_placement_type,
             'placementId': cur_wheelstack_placement_id,
             'rowPlacement': cur_wheelstack_row,
             'columnPlacement': cur_wheelstack_col,
@@ -552,6 +553,8 @@ async def process_wheelstack(
     # DESTINATION change:
     #  1. ADD created order into `extra` element `orders`.
     result = {
+        'sourceType': cur_wheelstack_placement_type,
+        'sourceId': cur_wheelstack_placement_id,
         'orderId': created_order_id,
         'sourceRow': cur_wheelstack_row,
         'sourceCol': cur_wheelstack_col,
@@ -560,10 +563,10 @@ async def process_wheelstack(
     return result
 
 
-async def orders_create_bulk_move_to_pro_rej_orders(order_req_data: dict, db: AsyncIOMotorClient):
+async def orders_create_bulk_move_to_pro_rej_orders(
+        from_everywhere: bool, order_req_data: dict, db: AsyncIOMotorClient
+):
     batch_number = order_req_data['batchNumber']
-    placement_id = order_req_data['placement_id']
-    placement_type = order_req_data['placementType']
     batch_number_data = await db_find_batch_number(batch_number, db, DB_PMK_NAME, CLN_BATCH_NUMBERS)
     if batch_number_data is None:
         raise HTTPException(
@@ -583,10 +586,21 @@ async def orders_create_bulk_move_to_pro_rej_orders(order_req_data: dict, db: As
             detail=MSG_TESTS_FAILED,
             status_code=status.HTTP_403_FORBIDDEN,
         )
-    placement_object_id = await get_object_id(placement_id)
-    all_available = await db_find_all_processing_available(
-        batch_number, placement_object_id, placement_type, db, DB_PMK_NAME, CLN_WHEELSTACKS
-    )
+    async_tasks = []
+    # TODO: Maybe add custom types on request.
+    #  But for now, we can take only from GRID and STORAGE's.
+    available_statuses: list[str] = [PS_STORAGE, PS_GRID]
+    if from_everywhere:
+        all_available = await db_find_all_pro_rej_available(
+            batch_number, available_statuses, db, DB_PMK_NAME, CLN_WHEELSTACKS
+        )
+    else:
+        source_placement_id = order_req_data['placement_id']
+        source_placement_type = order_req_data['placementType']
+        source_placement_object_id = await get_object_id(source_placement_id)
+        all_available = await db_find_all_pro_rej_available_in_placement(
+            batch_number, source_placement_object_id, source_placement_type, db, DB_PMK_NAME, CLN_WHEELSTACKS
+        )
     destination_id = await get_object_id(order_req_data['destination']['placementId'])
     destination_element_name = order_req_data['destination']['elementName']
     destination_exist = await get_grid_preset_by_object_id(
@@ -598,7 +612,6 @@ async def orders_create_bulk_move_to_pro_rej_orders(order_req_data: dict, db: As
             detail='Provided `destinationId`. Not Found',
             status_code=status.HTTP_404_NOT_FOUND,
         )
-    async_tasks = []
     async with (await db.start_session()) as session:
         async with session.start_transaction():
             for wheelstack_data in all_available:
@@ -613,9 +626,16 @@ async def orders_create_bulk_move_to_pro_rej_orders(order_req_data: dict, db: As
                 destination_id, destination_element_name, orders,
                 db, DB_PMK_NAME, CLN_GRID, session, False
             )
-            if PS_GRID == order_req_data['placementType']:
+            grid_cells_to_update = {}
+            for result in results:
+                if PS_GRID == result['sourceType']:
+                    if result['sourceId'] not in grid_cells_to_update:
+                        grid_cells_to_update[result['sourceId']] = [result]
+                    else:
+                        grid_cells_to_update[result['sourceId']].append(result)
+            for source_id, results_data in grid_cells_to_update.items():
                 await db_update_grid_cells_data(
-                    placement_object_id, results, db, DB_PMK_NAME, CLN_GRID, session, record_change=True,
+                    source_id, results_data, db, DB_PMK_NAME, CLN_GRID, session, record_change=True,
                 )
             return orders
 # ---
