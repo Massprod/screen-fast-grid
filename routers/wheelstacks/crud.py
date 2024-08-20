@@ -47,7 +47,7 @@ async def db_find_all_wheelstacks(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database search error")
 
 
-async def db_find_all_processing_available(
+async def db_find_all_pro_rej_available_in_placement(
         batch_number: str,
         placement_id: ObjectId,
         placement_type: str,
@@ -69,8 +69,34 @@ async def db_find_all_processing_available(
         result = await collection.find(query).to_list(length=None)
         return result
     except PyMongoError as e:
-        logger.error(f"Error getting all available for processing `wheelStack`s: {e}")
+        logger.error(f"Error getting all available in placement `wheelStack`s: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database search error")
+
+
+async def db_find_all_pro_rej_available(
+        batch_number: str,
+        available_statuses: list[str],
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        'batchNumber': batch_number,
+        'blocked': False,
+        'status': {
+            '$in': available_statuses,
+        }
+    }
+    try:
+        result = await collection.find(query).to_list(length=None)
+        return result
+    except PyMongoError as e:
+        logger.error(f'Error getting all available `wheelstack`s: {e}')
+        raise HTTPException(
+            detail='Error while searching for all available `wheelstack`s',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 async def db_find_wheelstack_by_object_id(
