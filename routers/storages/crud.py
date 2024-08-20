@@ -229,3 +229,40 @@ async def db_storage_delete_placed_wheelstack(
             detail=f'Error while deleting placed `wheelstack`',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+async def db_get_all_storages(
+        include_data: bool,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+):
+    db_info = await log_db_record(db_name, db_collection)
+    collection = await get_db_collection(db, db_name, db_collection)
+    logger.info(
+        f'Attempt to get all `storage` documents' + db_info
+    )
+    query = {}
+    projection = {
+        '_id': True,
+        'name': True,
+        'createdAt': True,
+        'lastChange': True,
+    }
+    if include_data:
+        projection['elements'] = True
+    try:
+        result = await collection.find(query, projection).to_list(length=None)
+        logger.info(
+            f'Successfully gathered all `storage` documents' + db_info
+        )
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        logger.error(
+            f'Error while gathering all `storage` documents' + db_info + error_extra
+        )
+        raise HTTPException(
+            detail=f'Error while gathering all `storage` documents',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

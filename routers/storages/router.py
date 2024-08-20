@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
 from routers.storages.crud import (db_get_storage_by_name,
                                    db_create_storage,
                                    db_get_storage_by_object_id,
-                                   db_storage_make_json_friendly
+                                   db_storage_make_json_friendly, db_get_all_storages
                                    )
 
 
@@ -82,6 +82,25 @@ async def route_get_created_storage(
             status_code=status.HTTP_404_NOT_FOUND,
         )
     resp_data = await db_storage_make_json_friendly(exist)
+    return JSONResponse(
+        content=resp_data,
+        status_code=status.HTTP_200_OK,
+    )
+
+
+@router.get(
+    path='/all',
+    description='Get all of the storages currently presented in DB. With data or without.',
+    name='Get Storages',
+)
+async def route_get_created_storages(
+        include_data: bool = Query(False,
+                                   description='Indicator to include data of the `storages`'),
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+):
+    resp_data = await db_get_all_storages(include_data, db, DB_PMK_NAME, CLN_STORAGES)
+    for index in range(len(resp_data)):
+        resp_data[index] = await db_storage_make_json_friendly(resp_data[index])
     return JSONResponse(
         content=resp_data,
         status_code=status.HTTP_200_OK,
