@@ -624,7 +624,7 @@ async def orders_create_bulk_move_to_pro_rej_orders(
             orders = [result['orderId'] for result in results]
             await db_append_extra_cell_orders(
                 destination_id, destination_element_name, orders,
-                db, DB_PMK_NAME, CLN_GRID, session, False
+                db, DB_PMK_NAME, CLN_GRID, session, True
             )
             grid_cells_to_update = {}
             for result in results:
