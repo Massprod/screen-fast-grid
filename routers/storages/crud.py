@@ -11,8 +11,9 @@ async def db_storage_make_json_friendly(storage_data: dict) -> dict:
     storage_data['createdAt'] = storage_data['createdAt'].isoformat()
     storage_data['lastChange'] = storage_data['lastChange'].isoformat()
     if 'elements' in storage_data:
-        for element_id in storage_data['elements']:
-            storage_data['elements'][element_id] = str(storage_data['elements'][element_id])
+        for batch in storage_data['elements']:
+            for element_id in storage_data['elements'][batch]:
+                storage_data['elements'][batch][element_id] = str(storage_data['elements'][batch][element_id])
     return storage_data
 
 
