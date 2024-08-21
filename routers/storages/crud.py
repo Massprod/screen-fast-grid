@@ -267,3 +267,41 @@ async def db_get_all_storages(
             detail=f'Error while gathering all `storage` documents',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+async def db_storage_delete_empty_batches(
+        storage_id: ObjectId,
+        batch_numbers: list[str],
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    db_info = await log_db_record(db_name, db_collection)
+    logger.info(
+        f'Attempt to clear all empty `batchNumbers` from storage = {storage_id}' + db_info
+    )
+    query = {
+        '_id': storage_id,
+    }
+    update = {
+        '$unset': {
+        }
+    }
+    for batch_number in batch_numbers:
+        update['$unset'][f'elements.{batch_number}'] = 1
+    try:
+        result = collection.update_one(query, update)
+        logger.info(
+            f'Successfully cleared all empty `batchNumbers` in `storage` = {storage_id}' + db_info
+        )
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        logger.error(
+            f'Error while clearing all `batchNumbers` in `storage` = {storage_id}' + db_info + error_extra
+        )
+        raise HTTPException(
+            detail=f'Error while clearing `storage`',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

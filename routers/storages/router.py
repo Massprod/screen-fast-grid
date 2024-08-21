@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
 from routers.storages.crud import (db_get_storage_by_name,
                                    db_create_storage,
                                    db_get_storage_by_object_id,
-                                   db_storage_make_json_friendly, db_get_all_storages
+                                   db_storage_make_json_friendly, db_get_all_storages, db_storage_delete_empty_batches
                                    )
 
 
@@ -85,6 +85,55 @@ async def route_get_created_storage(
     return JSONResponse(
         content=resp_data,
         status_code=status.HTTP_200_OK,
+    )
+
+
+@router.patch(
+    path='/clear',
+    description='Clear empty `batchNumbers` in `elements` or delete `storage` itself',
+    name='Clear Empty Batches',
+)
+async def route_patch_created_storage(
+        storage_name: str = Query(None,
+                                  description='Name of the storage to search'),
+        storage_id: str = Query(None,
+                                description='`ObjectId` of the storage to search'),
+        batch_number: str = Query(None,
+                                  description='Clear empty batches'),
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+):
+    if not storage_name and not storage_id:
+        logger.warning(f'Attempt to search for a `storage` without correctly provided Query parameters')
+        raise HTTPException(
+            detail='You must provide either `ObjectId` or `name` to search for a `storage`',
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    storage = None
+    include_data = True if not batch_number else False
+    if storage_id:
+        storage_object_id = await get_object_id(storage_id)
+        storage = await db_get_storage_by_object_id(
+            storage_object_id, include_data, db, DB_PMK_NAME, CLN_STORAGES
+        )
+    elif storage_name:
+        storage = await db_get_storage_by_name(
+            storage_name, include_data, db, DB_PMK_NAME, CLN_STORAGES
+        )
+    if storage is None:
+        raise HTTPException(
+            detail=f'Storage not found',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    batch_numbers = []
+    if include_data:
+        batch_numbers = [key for key, value in storage['elements'].items() if len(value) == 0]
+    if batch_number:
+        batch_numbers.append(batch_number)
+    res = await db_storage_delete_empty_batches(
+        storage['_id'], batch_numbers, db, DB_PMK_NAME, CLN_STORAGES
+    )
+    return Response(
+        status_code=status.HTTP_204_NO_CONTENT,
     )
 
 
