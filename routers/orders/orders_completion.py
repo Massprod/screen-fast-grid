@@ -493,8 +493,11 @@ async def orders_complete_move_to_laboratory(order_data: dict, db: AsyncIOMotorC
     source_cell_data['blocked'] = False
     # We shouldn't leave empty `wheelStack` placed in the grid.
     # But we're still leaving it in DB, but the cell should be cleared.
+    source_wheelstack_data['blocked'] = False
+    source_wheelstack_data['lastOrder'] = order_data['_id']
     if 0 == len(source_wheelstack_data['wheels']):
         source_cell_data['wheelStack'] = None
+        source_wheelstack_data['blocked'] = True
         source_wheelstack_data['status'] = PS_SHIPPED
     async with (await db.start_session()) as session:
         async with session.start_transaction():
@@ -507,18 +510,14 @@ async def orders_complete_move_to_laboratory(order_data: dict, db: AsyncIOMotorC
                 dest_id, dest_element_name, order_data['_id'],
                 db, DB_PMK_NAME, CLN_GRID, session, True,
             )
-            logger.error('delete cell')
             # -6- <- Unblock source `wheelStack` + reshuffle wheels.
-            source_wheelstack_data['lastOrder'] = order_data['_id']
-            source_wheelstack_data['blocked'] = False
+
             await db_update_wheelstack(
                 source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
             )
-            logger.error('update wheelstack')
             # We store `objectId` in `affectedWheels` and `wheels`.
             # So it's guaranteed to be unique, we don't need to check a position, we can just remove it.
             for new_pos, wheel in enumerate(source_wheelstack_data['wheels']):
-                logger.error('wheels', wheel)
                 await db_update_wheel_position(
                     wheel, new_pos, db, DB_PMK_NAME, CLN_WHEELS, session
                 )
@@ -896,15 +895,32 @@ async def orders_complete_move_from_storage_to_lab(
         )
     source_wheelstack_data['blocked'] = False
     source_wheelstack_data['lastOrder'] = order_data['_id']
+    dest_id = order_data['destination']['placementId']
+    dest_element_name = order_data['destination']['columnPlacement']
     async with (await db.start_session()) as session:
         async with session.start_transaction():
             await db_delete_order(
                 order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
             )
+            await db_delete_extra_cell_order(
+                dest_id, dest_element_name, order_data['_id'],
+                db, DB_PMK_NAME, CLN_GRID, session, True,
+            )
+            if 0 == len(source_wheelstack_data['wheels']):
+                source_wheelstack_data['blocked'] = True
+                source_wheelstack_data['status'] = PS_SHIPPED
+                await db_storage_delete_placed_wheelstack(
+                    source_storage_id, source_wheelstack_data['_id'], source_wheelstack_data['batchNumber'],
+                    db, DB_PMK_NAME, CLN_STORAGES, session, True
+                )
             await db_update_wheelstack(
                 source_wheelstack_data, source_wheelstack_data['_id'],
                 db, DB_PMK_NAME, CLN_WHEELSTACKS, session
             )
+            for new_pos, wheel in enumerate(source_wheelstack_data['wheels']):
+                await db_update_wheel_position(
+                    wheel, new_pos, db, DB_PMK_NAME, CLN_WHEELS, session
+                )
             completed_order = await db_create_order(
                 order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session,
             )
