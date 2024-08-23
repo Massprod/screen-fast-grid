@@ -11,7 +11,7 @@ from routers.wheelstacks.crud import db_find_wheelstack_by_object_id, db_update_
 from routers.orders.crud import db_delete_order, db_create_order
 from constants import (DB_PMK_NAME, CLN_ACTIVE_ORDERS, CLN_GRID, CLN_WHEELSTACKS,
                        ORDER_STATUS_CANCELED, CLN_CANCELED_ORDERS, PRES_TYPE_GRID,
-                       PRES_TYPE_PLATFORM, CLN_BASE_PLATFORM)
+                       PRES_TYPE_PLATFORM, CLN_BASE_PLATFORM, PS_BASE_PLATFORM, PS_GRID)
 from utility.utilities import time_w_timezone
 
 
@@ -252,9 +252,16 @@ async def orders_cancel_move_to_storage(
     source_id: ObjectId = order_data['source']['placementId']
     source_row: str = order_data['source']['rowPlacement']
     source_col: str = order_data['source']['columnPlacement']
-    source_cell_data = await db_get_grid_cell_data(
-        source_id, source_row, source_col, db, DB_PMK_NAME, CLN_GRID
-    )
+    source_type: str = order_data['source']['placementType']
+    source_cell_data = None
+    if PS_GRID == source_type:
+        source_cell_data = await db_get_grid_cell_data(
+            source_id, source_row, source_col, db, DB_PMK_NAME, CLN_GRID
+        )
+    elif PS_BASE_PLATFORM == source_type:
+        source_cell_data = await db_get_platform_cell_data(
+            source_id, source_row, source_col, db, DB_PMK_NAME, CLN_BASE_PLATFORM
+        )
     if source_cell_data is None:
         logger.error(f'{source_row}|{source_col} <- source cell doesnt exist in the `grid` = {source_id}'
                      f'But given order = {order_data['_id']} marks it as source cell.')
@@ -293,14 +300,21 @@ async def orders_cancel_move_to_storage(
     source_cell_data['blockedBy'] = None
     async with (await db.start_session()) as session:
         async with session.start_transaction():
-            await db_update_grid_cell_data(
-                source_id, source_row, source_col, source_cell_data,
-                db, DB_PMK_NAME, CLN_GRID, session, True
-            )
+            if PS_GRID == source_type:
+                await db_update_grid_cell_data(
+                    source_id, source_row, source_col, source_cell_data,
+                    db, DB_PMK_NAME, CLN_GRID, session, True
+                )
+            elif PS_BASE_PLATFORM == source_type:
+                await db_update_platform_cell_data(
+                    source_id, source_row, source_col, source_cell_data,
+                    db, DB_PMK_NAME, CLN_BASE_PLATFORM, session, True
+                )
             source_wheelstack_data['blocked'] = False
             source_wheelstack_data['lastOrder'] = order_data['_id']
             await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                source_wheelstack_data, source_wheelstack_data['_id'],
+                db, DB_PMK_NAME, CLN_WHEELSTACKS, session
             )
             await db_delete_order(
                 order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session,

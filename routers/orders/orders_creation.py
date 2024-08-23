@@ -22,7 +22,7 @@ from constants import (PRES_TYPE_GRID, PRES_TYPE_PLATFORM,
                        ORDER_STATUS_PENDING, CLN_ACTIVE_ORDERS, ORDER_MOVE_WHOLE_STACK,
                        EE_HAND_CRANE, EE_GRID_ROW_NAME, CLN_WHEELS, EE_LABORATORY,
                        ORDER_MOVE_TO_LABORATORY, ORDER_MOVE_TO_PROCESSING, ORDER_MOVE_TO_REJECTED, MSG_TESTS_NOT_DONE,
-                       MSG_TESTS_FAILED, ORDER_MOVE_TO_STORAGE, CLN_STORAGES, PS_STORAGE, PS_GRID)
+                       MSG_TESTS_FAILED, ORDER_MOVE_TO_STORAGE, CLN_STORAGES, PS_STORAGE, PS_GRID, PS_BASE_PLATFORM)
 from routers.batch_numbers.crud import db_find_batch_number
 
 
@@ -796,21 +796,18 @@ async def orders_create_move_to_rejected(db: AsyncIOMotorClient, order_data: dic
 async def orders_create_move_to_storage(db: AsyncIOMotorClient, order_data: dict) -> ObjectId:
     chosen_placement: str = order_data['source']['placementType']
     attempt_string: str = await orders_creation_attempt_string(ORDER_MOVE_TO_STORAGE)
-    if PRES_TYPE_GRID != chosen_placement:
-        logger.warning(
-            f'{attempt_string}'
-            f'To move from incorrect `placementType` = {chosen_placement}'
-        )
-        raise HTTPException(
-            detail=f'We can only {ORDER_MOVE_TO_STORAGE} from a `grid`',
-            status_code=status.HTTP_400_BAD_REQUEST,
-        )
     source_id: ObjectId = await get_object_id(order_data['source']['placementId'])
     source_row: str = order_data['source']['rowPlacement']
     source_col: str = order_data['source']['columnPlacement']
-    source_cell_data = await db_get_grid_cell_data(
-        source_id, source_row, source_col, db, DB_PMK_NAME, CLN_GRID
-    )
+    source_cell_data = None
+    if PS_GRID == chosen_placement:
+        source_cell_data = await db_get_grid_cell_data(
+            source_id, source_row, source_col, db, DB_PMK_NAME, CLN_GRID
+        )
+    elif PS_BASE_PLATFORM == chosen_placement:
+        source_cell_data = await db_get_platform_cell_data(
+            source_id, source_row, source_col, db, DB_PMK_NAME, CLN_BASE_PLATFORM
+        )
     if source_cell_data is None:
         logger.warning(
             f'{attempt_string}'
@@ -925,10 +922,16 @@ async def orders_create_move_to_storage(db: AsyncIOMotorClient, order_data: dict
                 'blocked': True,
                 'blockedBy': created_order_id,
             }
-            await db_update_grid_cell_data(
-                source_id, source_row, source_col, new_source_cell_data,
-                db, DB_PMK_NAME, CLN_GRID, session, True,
-            )
+            if PS_GRID == chosen_placement:
+                await db_update_grid_cell_data(
+                    source_id, source_row, source_col, new_source_cell_data,
+                    db, DB_PMK_NAME, CLN_GRID, session, True,
+                )
+            elif PS_BASE_PLATFORM == chosen_placement:
+                await db_update_platform_cell_data(
+                    source_id, source_row, source_col, new_source_cell_data,
+                    db, DB_PMK_NAME, CLN_BASE_PLATFORM, session, True,
+                )
             source_wheelstack_data['blocked'] = True
             source_wheelstack_data['lastOrder'] = created_order_id
             await db_update_wheelstack(

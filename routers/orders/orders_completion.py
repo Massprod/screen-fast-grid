@@ -24,7 +24,7 @@ from constants import (PRES_TYPE_GRID, PRES_TYPE_PLATFORM,
                        DB_PMK_NAME, CLN_GRID, CLN_BASE_PLATFORM,
                        CLN_WHEELSTACKS, CLN_WHEELS, CLN_ACTIVE_ORDERS,
                        CLN_COMPLETED_ORDERS, ORDER_STATUS_COMPLETED,
-                       PS_REJECTED, PS_GRID, PS_SHIPPED, PS_LABORATORY, CLN_STORAGES, PS_STORAGE)
+                       PS_REJECTED, PS_GRID, PS_SHIPPED, PS_LABORATORY, CLN_STORAGES, PS_STORAGE, PS_BASE_PLATFORM)
 
 
 async def orders_complete_move_wholestack(order_data: dict, db: AsyncIOMotorClient) -> ObjectId:
@@ -554,9 +554,15 @@ async def orders_complete_move_to_storage(
     source_id: ObjectId = order_data['source']['placementId']
     source_row: str = order_data['source']['rowPlacement']
     source_col: str = order_data['source']['columnPlacement']
-    source_cell_data = await db_get_grid_cell_data(
-        source_id, source_row, source_col, db, DB_PMK_NAME, CLN_GRID
-    )
+    source_cell_data = None
+    if PS_GRID == source_type:
+        source_cell_data = await db_get_grid_cell_data(
+            source_id, source_row, source_col, db, DB_PMK_NAME, CLN_GRID
+        )
+    elif PS_BASE_PLATFORM == source_type:
+        source_cell_data = await db_get_platform_cell_data(
+            source_id, source_row, source_col, db, DB_PMK_NAME, CLN_BASE_PLATFORM
+        )
     if source_cell_data is None:
         logger.error(f'{source_row}|{source_col} <- source cell doesnt exist in the `{source_type}` = {source_id}'
                      f'But given order = {order_data['_id']} marks it as source cell.')
@@ -608,10 +614,16 @@ async def orders_complete_move_to_storage(
     completion_time = await time_w_timezone()
     async with (await db.start_session()) as session:
         async with session.start_transaction():
-            await db_update_grid_cell_data(
-                source_id, source_row, source_col, source_cell_data,
-                db, DB_PMK_NAME, CLN_GRID, session, True
-            )
+            if PS_GRID == source_type:
+                await db_update_grid_cell_data(
+                    source_id, source_row, source_col, source_cell_data,
+                    db, DB_PMK_NAME, CLN_GRID, session, True
+                )
+            elif PS_BASE_PLATFORM == source_type:
+                await db_update_platform_cell_data(
+                    source_id, source_row, source_col, source_cell_data,
+                    db, DB_PMK_NAME, CLN_BASE_PLATFORM, session, True
+                )
             source_wheelstack_data['placement']['type'] = PS_STORAGE
             source_wheelstack_data['placement']['placementId'] = storage_id
             source_wheelstack_data['rowPlacement'] = '0'

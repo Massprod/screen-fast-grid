@@ -10,6 +10,7 @@ from constants import (
     PRES_TYPE_PLATFORM,
     PRES_TYPE_GRID,
     PS_STORAGE,
+    PS_BASE_PLATFORM,
     ORDER_MOVE_TO_STORAGE, PS_GRID,
 )
 
@@ -170,13 +171,29 @@ class CreateBulkProcessingOrderRequest(BaseModel):
                                                description='data to identify and validate `destination` as correct one')
 
 
+class MoveToStorageSources(str, Enum):
+    grid = PS_GRID
+    basePlatform = PS_BASE_PLATFORM
+
+
+class MoveToStorageSourceField(BaseModel):
+    placementType: MoveToStorageSources = Field(...,
+                                                description='Type of the source placement')
+    placementId: str = Field(...,
+                             description='`ObjectId` of the source placement')
+    rowPlacement: str = Field(...,
+                              description='`rowIdentifier` of the source row')
+    columnPlacement: str = Field(...,
+                                 description='`colIdentifier` of the source column')
+
+
 class CreateMoveToStorageRequest(BaseModel):
     orderName: str = Field('',
                            description='Optional name of the `order`')
     orderDescription: str = Field('',
                                   description='Optional description of the `order`')
-    source: ProcessingSource = Field(...,
-                                     description='all the data to identify and validate `source` as correct one')
+    source: MoveToStorageSourceField = Field(...,
+                                         description='all the data to identify and validate `source` as correct one')
     storage: str = Field(...,
                          description='`ObjectId` of the storage to place into')
 
