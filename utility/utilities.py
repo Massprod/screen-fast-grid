@@ -112,3 +112,12 @@ async def get_db_collection(
 
 async def time_w_timezone() -> datetime:
     return datetime.now(timezone.utc)
+
+
+async def get_correct_datetime(date_string) -> datetime | None:
+    try:
+        cor_date = datetime.strptime(date_string, '%Y-%m-%d')
+        cor_date = cor_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        return cor_date
+    except ValueError:
+        return None
