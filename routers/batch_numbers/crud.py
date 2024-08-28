@@ -3,7 +3,7 @@ from pymongo.errors import PyMongoError, DuplicateKeyError
 from fastapi import status, HTTPException
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
 from utility.utilities import get_db_collection, log_db_record, time_w_timezone
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 
 async def batch_number_record_make_json_friendly(record_data: dict) -> dict:
@@ -172,4 +172,34 @@ async def db_change_lab_status(
         )
 
 
-
+async def db_find_all_batch_numbers_in_period(
+        period_start: datetime,
+        period_end: datetime,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    db_log_data = await log_db_record(db_name, db_collection)
+    query = {
+        'createdAt': {
+            '$gte': period_start,
+            '$lte': period_end,
+        }
+    }
+    logger.info(f'start: {period_start}\nend: {period_end}')
+    logger.info(
+        f'Searching all `batchNumber`s within period: start = {period_start} -> end = {period_end}' + db_log_data
+    )
+    try:
+        res = await collection.find(query).to_list(length=None)
+        return res
+    except PyMongoError as error:
+        logger.error(
+            f'Error while searching `batchNumber` within period: start = {period_start} -> end = {period_end}'
+            + db_log_data + f'Error: {error}'
+        )
+        raise HTTPException(
+            detail='Error while searching `batchNumber` records',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
