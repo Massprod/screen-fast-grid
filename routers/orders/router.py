@@ -1,55 +1,74 @@
 from bson import ObjectId
+from loguru import logger
+from utility.utilities import get_object_id
 from database.mongo_connection import mongo_client
 from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi.responses import JSONResponse, Response
-from routers.orders.crud import (db_find_order_by_object_id,
-                                 db_get_all_orders,
-                                 order_make_json_friendly,
-                                 db_get_order_by_object_id, )
-from routers.orders.orders_completion import (orders_complete_move_wholestack,
-                                              orders_complete_move_to_rejected,
-                                              orders_complete_move_to_processing,
-                                              orders_complete_move_to_laboratory, orders_complete_move_to_storage,
-                                              orders_complete_move_wholestack_from_storage,
-                                              orders_complete_move_to_pro_rej_from_storage,
-                                              orders_complete_move_from_storage_to_storage,
-                                              orders_complete_move_from_storage_to_lab)
-from routers.orders.orders_cancelation import orders_cancel_basic_extra_element_moves, orders_cancel_move_wholestack, \
-    orders_cancel_move_to_storage, orders_cancel_move_from_storage_to_grid, orders_cancel_move_from_storage_to_extras, \
-    orders_cancel_move_from_storage_to_storage
-from routers.orders.models.models import CreateMoveOrderRequest, CreateLabOrderRequest, CreateProcessingOrderRequest, \
-    CreateBulkProcessingOrderRequest, CreateMoveToStorageRequest, CreateMoveFromStorageRequest
-from routers.orders.orders_creation import (orders_create_move_whole_wheelstack,
-                                            orders_create_move_to_laboratory,
-                                            orders_create_move_to_processing,
-                                            orders_create_move_to_rejected, orders_create_bulk_move_to_pro_rej_orders,
-                                            orders_create_move_to_storage, orders_create_move_from_storage_whole_stack,
-                                            orders_create_move_from_storage_whole_stack,
-                                            orders_create_move_to_pro_rej_from_storage,
-                                            orders_create_move_from_storage_to_storage_whole_stack,
-                                            orders_create_move_from_storage_to_lab,
-                                            )
+from auth.jwt_validation import get_role_verification_dependency
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Path, Query
-from constants import (
-    ORDER_MOVE_WHOLE_STACK, ORDER_MOVE_TO_LABORATORY,
-    ORDER_MOVE_TO_PROCESSING, ORDER_MOVE_TO_REJECTED,
-    DB_PMK_NAME, CLN_ACTIVE_ORDERS, BASIC_EXTRA_MOVES,
-    CLN_COMPLETED_ORDERS, CLN_CANCELED_ORDERS, ORDER_MOVE_TO_STORAGE, PS_STORAGE,
+from routers.orders.crud import (
+    db_find_order_by_object_id,
+    db_get_all_orders,
+    order_make_json_friendly,
+    db_get_order_by_object_id,
 )
-from utility.utilities import get_object_id
-from loguru import logger
+from routers.orders.orders_completion import (
+    orders_complete_move_wholestack,
+    orders_complete_move_to_rejected,
+    orders_complete_move_to_processing,
+    orders_complete_move_to_laboratory, orders_complete_move_to_storage,
+    orders_complete_move_wholestack_from_storage,
+    orders_complete_move_to_pro_rej_from_storage,
+    orders_complete_move_from_storage_to_storage,
+    orders_complete_move_from_storage_to_lab
+)
+from routers.orders.orders_cancelation import (
+    orders_cancel_basic_extra_element_moves,
+    orders_cancel_move_wholestack,
+    orders_cancel_move_to_storage,
+    orders_cancel_move_from_storage_to_grid,
+    orders_cancel_move_from_storage_to_extras,
+    orders_cancel_move_from_storage_to_storage,
+)
+from routers.orders.models.models import (
+    CreateMoveOrderRequest,
+    CreateLabOrderRequest,
+    CreateProcessingOrderRequest,
+    CreateBulkProcessingOrderRequest,
+    CreateMoveToStorageRequest,
+    CreateMoveFromStorageRequest,
+)
+from routers.orders.orders_creation import (
+    orders_create_move_whole_wheelstack,
+    orders_create_move_to_laboratory,
+    orders_create_move_to_processing,
+    orders_create_move_to_rejected,
+    orders_create_bulk_move_to_pro_rej_orders,
+    orders_create_move_to_storage,
+    orders_create_move_from_storage_whole_stack,
+    orders_create_move_from_storage_whole_stack,
+    orders_create_move_to_pro_rej_from_storage,
+    orders_create_move_from_storage_to_storage_whole_stack,
+    orders_create_move_from_storage_to_lab,
+)
+from constants import (
+    ORDER_MOVE_WHOLE_STACK,
+    ORDER_MOVE_TO_LABORATORY,
+    ORDER_MOVE_TO_PROCESSING,
+    ORDER_MOVE_TO_REJECTED,
+    DB_PMK_NAME,
+    CLN_ACTIVE_ORDERS,
+    BASIC_EXTRA_MOVES,
+    CLN_COMPLETED_ORDERS,
+    CLN_CANCELED_ORDERS,
+    ORDER_MOVE_TO_STORAGE,
+    PS_STORAGE,
+    BASIC_PAGE_VIEW_ROLES,
+    ADMIN_ACCESS_ROLES,
+)
+
 
 router = APIRouter()
-
-
-# TODO: We need to know more about how orders should be processed.
-#  Because we can move it to some `extra` element and place it here for a use.
-#  Or we can delete it instantly when it's placed here.
-#  For, now I will delete them, because that's what I been told.
-#  But I guess, it's better to place them on the `extra` element an then
-#  create a different order to move it from here to w.e the place we want.
-#  In this case, we can always know where's is it and manipulate it easier.
-#  So, it can be a potential rebuild of all of the ORDERS, but let's stick for a thing we been told.
 
 
 @router.get(
@@ -69,6 +88,7 @@ async def route_get_order(
         canceled_orders: bool = Query(True,
                                       description='False to exclude `canceledOrders`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     order_id = await get_object_id(order_object_id)
     order_filter = {
@@ -111,6 +131,7 @@ async def route_get_all_orders(
         canceled_orders: bool = Query(True,
                                       description='False to exclude `canceledOrders`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     all_data = {}
     if active_orders:
@@ -149,6 +170,7 @@ async def route_post_create_order_move(
         order_data: CreateMoveOrderRequest = Body(...,
                                                   description='all required data for a new `order`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     created_order_id: ObjectId | None = None
     data = order_data.model_dump()
@@ -172,6 +194,7 @@ async def route_post_create_order_move_to_lab(
         order_data: CreateLabOrderRequest = Body(...,
                                                  description='all required data for a new lab `order`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     data = order_data.model_dump()
     logger.info(f'Creating order of type = `{ORDER_MOVE_TO_LABORATORY}`')
@@ -193,6 +216,7 @@ async def route_post_create_order_move_to_processing(
         order_data: CreateProcessingOrderRequest = Body(...,
                                                         description='all required data for a new processing `order`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     data = order_data.model_dump()
     logger.info(f'Request to create order of type = {ORDER_MOVE_TO_PROCESSING}')
@@ -216,6 +240,7 @@ async def route_post_create_bulk_orders_move_to_pro_rej(
         from_everywhere: bool = Query(False,
                                       description='Gather `wheelstack`s from `everywhere`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     order_req_data = order_data.model_dump()
     created_orders = await orders_create_bulk_move_to_pro_rej_orders(
@@ -235,10 +260,10 @@ async def route_post_create_bulk_orders_move_to_pro_rej(
     name='New Order',
 )
 async def route_post_create_order_move_to_rejected(
-        # TODO: If we change logic for this order, change MODEL
         order_data: CreateProcessingOrderRequest = Body(...,
                                                         description='all required data for a new processing `order`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     data = order_data.model_dump()
     logger.info(f'Creating order of type = {ORDER_MOVE_TO_REJECTED}')
@@ -259,6 +284,7 @@ async def route_post_create_order_move_to_rejected(
 async def route_post_create_order_move_to_storage(
         order_data: CreateMoveToStorageRequest,
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     data = order_data.model_dump()
     created_order_id = await orders_create_move_to_storage(db, data)
@@ -278,6 +304,7 @@ async def route_post_create_order_move_to_storage(
 async def route_post_create_order_move_from_storage(
         order_data: CreateMoveFromStorageRequest = Body(...),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     data = order_data.model_dump()
     created_order_id: ObjectId | None = None
@@ -298,8 +325,6 @@ async def route_post_create_order_move_from_storage(
         status_code=status.HTTP_201_CREATED,
     )
 
-# TODO: ADD BULK processing|rejected
-
 
 @router.post(
     path='/cancel/{order_object_id}',
@@ -312,6 +337,7 @@ async def route_post_cancel_order(
         cancellation_reason: str = Query('',
                                          description='reason of cancellation'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     order_id: ObjectId = await get_object_id(order_object_id)
     order_data = await db_find_order_by_object_id(order_id, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS)
@@ -354,6 +380,7 @@ async def route_post_complete_order(
         order_object_id: str = Path(...,
                                     description='`objectId` of the order to complete'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     order_id: ObjectId = await get_object_id(order_object_id)
     order_data = await db_find_order_by_object_id(order_id, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS)

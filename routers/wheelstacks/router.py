@@ -1,28 +1,37 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Path, Body
-from fastapi.responses import JSONResponse, Response
+from bson import ObjectId
 from database.mongo_connection import mongo_client
 from motor.motor_asyncio import AsyncIOMotorClient
-from .models.models import CreateWheelStackRequest, ForceUpdateWheelStackRequest
-from .crud import (db_find_all_wheelstacks, db_insert_wheelstack,
-                   db_delete_wheelstack, wheelstack_make_json_friendly,
-                   all_make_json_friendly, db_update_wheelstack,
-                   db_find_wheelstack_by_object_id, db_find_wheelstack_by_pis,
-                   db_get_wheelstack_last_change)
-from bson import ObjectId
+from fastapi.responses import JSONResponse, Response
 from utility.utilities import get_object_id, time_w_timezone
-from constants import DB_PMK_NAME, CLN_WHEELSTACKS, CLN_BASE_PLATFORM, CLN_WHEELS, CLN_BATCH_NUMBERS
+from auth.jwt_validation import get_role_verification_dependency
+from fastapi import APIRouter, Depends, HTTPException, status, Path, Body
 from routers.wheels.crud import db_find_wheel_by_object_id, db_update_wheel
-from routers.base_platform.crud import cell_exist, place_wheelstack_in_platform, get_platform_by_object_id
+from .models.models import CreateWheelStackRequest, ForceUpdateWheelStackRequest
 from routers.batch_numbers.crud import db_find_batch_number, db_create_batch_number
+from routers.base_platform.crud import cell_exist, place_wheelstack_in_platform, get_platform_by_object_id
+from constants import (
+    DB_PMK_NAME,
+    CLN_WHEELSTACKS,
+    CLN_BASE_PLATFORM,
+    CLN_WHEELS,
+    CLN_BATCH_NUMBERS,
+    BASIC_PAGE_VIEW_ROLES,
+    ADMIN_ACCESS_ROLES,
+)
+from .crud import (
+    db_find_all_wheelstacks,
+    db_insert_wheelstack,
+    db_delete_wheelstack,
+    wheelstack_make_json_friendly,
+    all_make_json_friendly,
+    db_update_wheelstack,
+    db_find_wheelstack_by_object_id,
+    db_find_wheelstack_by_pis,
+    db_get_wheelstack_last_change,
+)
 
 
 router = APIRouter()
-
-
-# TODO: Currently, we don't need to search by anything except `objectId`.
-#  but it still good to add some options, to search by `originalPisId` or `row|col` placement etc.
-#  Maybe add these after first correct version.
-#  Or if it's needed.
 
 
 @router.post(
@@ -41,6 +50,7 @@ async def route_create_wheelstack(
                         " except the `lastChange`. Because this `wheelStack` might be never changed.",
         ),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     wheelstack_data = wheelstack.model_dump()
     # +++ Placement exist
@@ -178,7 +188,8 @@ async def route_create_wheelstack(
 )
 async def route_find_wheelstack(
         wheelstack_object_id: str = Path(description='`objectId` of the wheelstack'),
-        db: AsyncIOMotorClient = Depends(mongo_client.depend_client)
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     wheelstack_id: ObjectId = await get_object_id(wheelstack_object_id)
     result = await db_find_wheelstack_by_object_id(wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS)
@@ -207,7 +218,8 @@ async def route_find_wheelstack(
 async def route_force_update_wheelstack(
         wheelstack_new_data: ForceUpdateWheelStackRequest,
         wheelstack_object_id: str = Path(description='`objectId` of stored wheelstack'),
-        db: AsyncIOMotorClient = Depends(mongo_client.depend_client)
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(ADMIN_ACCESS_ROLES),
 ):
     new_data = wheelstack_new_data.model_dump()
     wheelstack_id = await get_object_id(wheelstack_object_id)
@@ -253,6 +265,7 @@ async def route_force_update_wheelstack(
 async def route_force_delete_wheelstack(
         wheelstack_object_id: str = Path(description='`objectId` of a stored wheelstack'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(ADMIN_ACCESS_ROLES),
 ):
     wheelstack_id: ObjectId = await get_object_id(wheelstack_object_id)
     result = await db_delete_wheelstack(wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS)
@@ -268,6 +281,7 @@ async def route_force_delete_wheelstack(
 )
 async def route_get_all_wheelstacks(
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     data = await db_find_all_wheelstacks(db, DB_PMK_NAME, CLN_WHEELSTACKS)
     resp = await all_make_json_friendly(data)
@@ -286,6 +300,7 @@ async def route_get_last_change(
         wheelstack_object_id: str = Path(...,
                                          description='`objectId` of the `wheelStack` to search'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     wheelstack_id: ObjectId = await get_object_id(wheelstack_object_id)
     res = await db_get_wheelstack_last_change(wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS)

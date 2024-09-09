@@ -1,16 +1,25 @@
 from bson import ObjectId
-from .crud import (get_preset_by_id, preset_make_json_friendly,
-                   get_preset_by_name, get_all_presets, presets_make_json_friendly)
+from loguru import logger
+from fastapi.responses import JSONResponse
 from utility.utilities import get_object_id
 from database.mongo_connection import mongo_client
-from constants import DB_PMK_NAME, CLN_GRID, CLN_PRESETS
-from fastapi import APIRouter, Depends, HTTPException, status, Path, Body, Query
-from fastapi.responses import JSONResponse
-from loguru import logger
+from auth.jwt_validation import get_role_verification_dependency
+from fastapi import APIRouter, Depends, HTTPException, status, Path
+from .crud import (
+    get_preset_by_id,
+    preset_make_json_friendly,
+    get_preset_by_name,
+    get_all_presets,
+    presets_make_json_friendly
+)
+from constants import (
+    DB_PMK_NAME,
+    CLN_PRESETS,
+    BASIC_PAGE_VIEW_ROLES,
+)
 
 
 router = APIRouter()
-
 
 
 @router.get(
@@ -21,6 +30,7 @@ router = APIRouter()
 )
 async def route_get_all_presets(
         db=Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     logger.info(f'Received request to get all presets from `{CLN_PRESETS}` collection')
     result = await get_all_presets(db, DB_PMK_NAME, CLN_PRESETS)
@@ -40,7 +50,8 @@ async def route_get_all_presets(
 )
 async def route_get_preset_by_object_id(
         preset_object_id: str = Path(..., description='preset `objectId` to find'),
-        db=Depends(mongo_client.depend_client)
+        db=Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     logger.info(f"Received request to get preset with `objectId` = {preset_object_id}")
     preset_id: ObjectId = await get_object_id(preset_object_id)
@@ -61,7 +72,8 @@ async def route_get_preset_by_object_id(
 )
 async def route_get_preset_by_preset_name(
         preset_name: str = Path(..., description='preset `presetName` to find'),
-        db=Depends(mongo_client.depend_client)
+        db=Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     logger.info(f'Received request to get preset with `presetName`: {preset_name}')
     status_code = status.HTTP_200_OK

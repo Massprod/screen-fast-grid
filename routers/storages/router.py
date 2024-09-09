@@ -1,17 +1,24 @@
-from bson import ObjectId
 from loguru import logger
 from utility.utilities import get_object_id
-from constants import DB_PMK_NAME, CLN_STORAGES
 from motor.motor_asyncio import AsyncIOMotorClient
 from database.mongo_connection import mongo_client
 from fastapi.responses import JSONResponse, Response
-from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
-from routers.storages.crud import (db_get_storage_by_name,
-                                   db_create_storage,
-                                   db_get_storage_by_object_id,
-                                   db_storage_make_json_friendly, db_get_all_storages, db_storage_delete_empty_batches
-                                   )
-
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from constants import (
+    DB_PMK_NAME,
+    CLN_STORAGES,
+    BASIC_PAGE_VIEW_ROLES,
+    ADMIN_ACCESS_ROLES,
+)
+from routers.storages.crud import (
+    db_get_storage_by_name,
+    db_create_storage,
+    db_get_storage_by_object_id,
+    db_storage_make_json_friendly,
+    db_get_all_storages,
+    db_storage_delete_empty_batches
+)
+from auth.jwt_validation import get_role_verification_dependency
 
 router = APIRouter()
 
@@ -25,6 +32,7 @@ async def route_post_create_storage(
         storage_name: str = Query(...,
                                   description="Name of the storage to create"),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(ADMIN_ACCESS_ROLES),
 ):
     exist = await db_get_storage_by_name(
         storage_name, False, db, DB_PMK_NAME, CLN_STORAGES,
@@ -59,6 +67,7 @@ async def route_get_created_storage(
         include_data: bool = Query(True,
                                    description="Indicator to include data of the `elements` inside of `storage`"),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     if not storage_name and not storage_id:
         logger.warning(f'Attempt to search for a `storage` without correctly provided Query parameters')
@@ -101,6 +110,7 @@ async def route_patch_created_storage(
         batch_number: str = Query(None,
                                   description='Clear empty batches'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     if not storage_name and not storage_id:
         logger.warning(f'Attempt to search for a `storage` without correctly provided Query parameters')
@@ -146,6 +156,7 @@ async def route_get_created_storages(
         include_data: bool = Query(False,
                                    description='Indicator to include data of the `storages`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     resp_data = await db_get_all_storages(include_data, db, DB_PMK_NAME, CLN_STORAGES)
     for index in range(len(resp_data)):

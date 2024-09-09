@@ -1,21 +1,35 @@
-from loguru import logger
-from fastapi import APIRouter, Depends, status, Query, Path, HTTPException, Response
-from fastapi.responses import JSONResponse
-from database.mongo_connection import mongo_client
-from .crud import get_platform_by_object_id, place_wheelstack_in_platform, db_get_platform_last_change_time
 from bson import ObjectId
-from motor.motor_asyncio import AsyncIOMotorClient
-from routers.presets.crud import get_preset_by_id
-from routers.grid.crud import collect_wheelstack_cells
-from routers.base_platform.crud import (platform_make_json_friendly,
-                                        get_platform_preset_by_object_id,
-                                        create_platform, get_platform_by_name,
-                                        block_platform_cell, unblock_platform_cell,
-                                        clear_platform_cell, get_all_platform_ids,
-                                        get_all_platforms_data)
+from loguru import logger
+from fastapi.responses import JSONResponse
 from utility.utilities import get_object_id
-from constants import DB_PMK_NAME, CLN_BASE_PLATFORM, CLN_PRESETS, PRES_TYPE_PLATFORM, CLN_WHEELSTACKS
+from routers.presets.crud import get_preset_by_id
+from motor.motor_asyncio import AsyncIOMotorClient
+from database.mongo_connection import mongo_client
+from routers.grid.crud import collect_wheelstack_cells
 from routers.wheelstacks.crud import db_find_wheelstack_by_object_id
+from auth.jwt_validation import get_role_verification_dependency
+from fastapi import APIRouter, Depends, status, Query, Path, HTTPException, Response
+from .crud import get_platform_by_object_id, place_wheelstack_in_platform, db_get_platform_last_change_time
+from constants import (
+    DB_PMK_NAME,
+    CLN_BASE_PLATFORM,
+    CLN_PRESETS,
+    PRES_TYPE_PLATFORM,
+    CLN_WHEELSTACKS,
+    BASIC_PAGE_VIEW_ROLES,
+    ADMIN_ACCESS_ROLES,
+)
+from routers.base_platform.crud import (
+    platform_make_json_friendly,
+    get_platform_preset_by_object_id,
+    create_platform,
+    get_platform_by_name,
+    block_platform_cell,
+    unblock_platform_cell,
+    clear_platform_cell,
+    get_all_platform_ids,
+    get_all_platforms_data,
+)
 
 router = APIRouter()
 
@@ -30,6 +44,7 @@ async def route_get_all_grids(
         only_id: bool = Query(False,
                               description='Provide only `objectId` of the elements'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     if only_id:
         result = await get_all_platform_ids(db, DB_PMK_NAME, CLN_BASE_PLATFORM)
@@ -67,7 +82,8 @@ async def route_get_all_grids(
 )
 async def route_get_platform_by_object_id(
         platform_object_id: str = Path(..., description='`objectId` of stored `basePlatform`'),
-        db: AsyncIOMotorClient = Depends(mongo_client.depend_client)
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     platform_id: ObjectId = await get_object_id(platform_object_id)
     res = await get_platform_by_object_id(platform_id, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
@@ -90,6 +106,7 @@ async def route_get_platform_by_name(
         name: str = Path(...,
                          description='`name` of stored `basePlatform`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     exist = await get_platform_by_name(name, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
     if exist is None:
@@ -113,6 +130,7 @@ async def route_get_platform_preset_by_object_id(
             description='`objectId` of the `basePlatform` for which we need to get used `preset`',
         ),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     logger.info(f'Receiver request for a `basePlatform` with `objectId` = {platform_object_id}')
     platform_id: ObjectId = await get_object_id(platform_object_id)
@@ -146,6 +164,7 @@ async def route_create_empty_platform(
         name: str = Query(...,
                           description='unique name of `basePlatform` to use'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(ADMIN_ACCESS_ROLES),
 ):
     logger.info(f'Receiver request to create a new `basePlatform` by `objectId` of a `preset` = {preset_object_id}')
     cor_name: str = name.strip()
@@ -206,6 +225,7 @@ async def route_force_place_wheelstack_in_the_platform(
         column: str = Query(...,
                             description='`column` of the cell placement'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(ADMIN_ACCESS_ROLES),
 ):
     # There's only 2 checks we need to check even with our FORCE method.
     # Because, we shouldn't be able to place on non-existing cells
@@ -282,6 +302,7 @@ async def route_force_block_of_cell(
         platform_object_id: str = Path(...,
                                        description='`objectId` of the placement'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(ADMIN_ACCESS_ROLES),
 ):
     platform_id: ObjectId = await get_object_id(platform_object_id)
     res = await block_platform_cell(platform_id, row, column, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
@@ -308,6 +329,7 @@ async def route_force_unblock_of_cell(
         platform_object_id: str = Path(...,
                                        description='`objectId` of the placement'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(ADMIN_ACCESS_ROLES),
 ):
     platform_id: ObjectId = await get_object_id(platform_object_id)
     res = await unblock_platform_cell(platform_id, row, column, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
@@ -333,6 +355,7 @@ async def route_force_clear_of_cell(
         platform_object_id: str = Path(...,
                                        description='`objectId` of the placement'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(ADMIN_ACCESS_ROLES),
 ):
     platform_id: ObjectId = await get_object_id(platform_object_id)
     res = await clear_platform_cell(platform_id, row, column, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
@@ -353,6 +376,7 @@ async def route_get_change_time(
         platform_object_id: str = Path(...,
                                        description='`objectId` of the `grid` to search'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     platform_id = await get_object_id(platform_object_id)
     res = await db_get_platform_last_change_time(platform_id, db, DB_PMK_NAME, CLN_BASE_PLATFORM)

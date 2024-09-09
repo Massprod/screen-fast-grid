@@ -1,15 +1,17 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 from database.mongo_connection import mongo_client
-from fastapi.responses import JSONResponse, Response
-from fastapi import APIRouter, Depends, HTTPException, status, Path, Query
-
 from utility.utilities import get_correct_datetime
-from .crud import (db_find_batch_number,
-                   db_find_all_batch_numbers,
-                   db_change_lab_status,
-                   batch_number_record_make_json_friendly, db_find_all_batch_numbers_in_period
-                   )
-from constants import DB_PMK_NAME, CLN_BATCH_NUMBERS
+from fastapi.responses import JSONResponse, Response
+from auth.jwt_validation import get_role_verification_dependency
+from fastapi import APIRouter, Depends, HTTPException, status, Path, Query
+from constants import DB_PMK_NAME, CLN_BATCH_NUMBERS, LAB_PAGE_VIEW_ROLES, LAB_PAGE_ACTION_ROLES
+from .crud import (
+    db_find_batch_number,
+    db_find_all_batch_numbers,
+    db_change_lab_status,
+    batch_number_record_make_json_friendly,
+    db_find_all_batch_numbers_in_period,
+)
 
 
 router = APIRouter()
@@ -26,6 +28,7 @@ async def route_get_all_batch_numbers(
                                         description='Filter to only passed or not passed'),
         days_delta: int = Query(None,
                                 description='Filter to `from days_delta to now`'),
+        token_data: dict = get_role_verification_dependency(LAB_PAGE_VIEW_ROLES),
 ):
     res = await db_find_all_batch_numbers(
         laboratory_passed, days_delta, db, DB_PMK_NAME, CLN_BATCH_NUMBERS
@@ -51,10 +54,10 @@ async def route_get_all_batch_numbers_in_period(
         period_start: str = Query(...,
                                   description='Start of the period in format: `YYYY-mm-dd`'),
         period_end: str = Query(...,
-                                description='End of the period in format: `YYYY-mm-dd`')
+                                description='End of the period in format: `YYYY-mm-dd`'),
+        token_data: dict = get_role_verification_dependency(LAB_PAGE_VIEW_ROLES),
 ):
     correct_start = await get_correct_datetime(period_start)
-    # TODO: Move this to Model, but later.
     if not correct_start:
         raise HTTPException(
             detail='Incorrect `period_start` format. Correct: `YYYY-mm-dd`',
@@ -83,8 +86,9 @@ async def route_get_all_batch_numbers_in_period(
 )
 async def route_get_batch_number(
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(LAB_PAGE_VIEW_ROLES),
         batch_number: str = Path(...,
-                                 description='Target `batchNumber`')
+                                 description='Target `batchNumber`'),
 ):
     res = await db_find_batch_number(batch_number, db, DB_PMK_NAME, CLN_BATCH_NUMBERS)
     if res is None:
@@ -106,6 +110,7 @@ async def route_get_batch_number(
 )
 async def route_patch_batch_number_lab_status(
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(LAB_PAGE_ACTION_ROLES),
         laboratory_passed: bool = Query(...,
                                         description='Current Lab status of the `batchNumber`'),
         batch_number: str = Path(...,

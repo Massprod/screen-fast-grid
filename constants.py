@@ -1,3 +1,5 @@
+from os import getenv
+from pathlib import Path
 
 # Order options ENUM.
 ORDER_MOVE_WHOLE_STACK: str = 'moveWholeStack'
@@ -69,3 +71,33 @@ WS_MAX_WHEELS: int = 6
 # WHEELS LIMIT
 WL_MIN_DIAM: int = 50
 WL_MAX_DIAM: int = 10000
+
+# JWT INFO
+PUBLIC_KEY_PATH = Path('auth/public_key.pem')
+
+with open(PUBLIC_KEY_PATH, 'r') as key_file:
+    PUBLIC_KEY = key_file.read()
+
+ALGORITHM = getenv('jwt_algorithm')
+ISSUER = getenv('jwt_issuer')
+
+ADMIN_ROLE = 'admin'
+MANAGER_ROLE = 'manager'
+LAB_PERSONAL_ROLE = 'labPersonal'
+
+
+ADMIN_ACCESS_ROLES: set[str] = {
+    ADMIN_ROLE
+}
+BASIC_PAGE_VIEW_ROLES: set[str] = {
+    ADMIN_ROLE, MANAGER_ROLE
+}
+BASIC_PAGE_ACTION_ROLES: set[str] = {
+    ADMIN_ROLE, MANAGER_ROLE
+}
+LAB_PAGE_VIEW_ROLES: set[str] = {
+    ADMIN_ROLE, MANAGER_ROLE, LAB_PERSONAL_ROLE
+}
+LAB_PAGE_ACTION_ROLES: set[str] = {
+    LAB_PERSONAL_ROLE
+}

@@ -1,17 +1,37 @@
-from database.mongo_connection import mongo_client
-from fastapi.responses import JSONResponse, Response
-from fastapi import APIRouter, Depends, HTTPException, status, Path, Query
-from motor.motor_asyncio import AsyncIOMotorClient
-from .crud import (get_grid_by_object_id, grid_make_json_friendly,
-                   place_wheelstack_in_grid, create_grid, block_grid_cell, unblock_grid_cell,
-                   collect_wheelstack_cells, get_grid_preset_by_object_id, get_grid_by_name,
-                   clear_grid_cell, get_all_grid_ids, get_all_grids_data, db_get_grid_last_change_time)
+from loguru import logger
 from bson import ObjectId
-from ..wheelstacks.crud import db_find_wheelstack_by_object_id
-from constants import DB_PMK_NAME, CLN_GRID, CLN_PRESETS, PRES_TYPE_GRID, CLN_WHEELSTACKS
 from utility.utilities import get_object_id
 from routers.presets.crud import get_preset_by_id
-from loguru import logger
+from motor.motor_asyncio import AsyncIOMotorClient
+from database.mongo_connection import mongo_client
+from fastapi.responses import JSONResponse, Response
+from ..wheelstacks.crud import db_find_wheelstack_by_object_id
+from auth.jwt_validation import get_role_verification_dependency
+from fastapi import APIRouter, Depends, HTTPException, status, Path, Query
+from .crud import (
+    get_grid_by_object_id,
+    grid_make_json_friendly,
+    place_wheelstack_in_grid,
+    create_grid,
+    block_grid_cell,
+    unblock_grid_cell,
+    collect_wheelstack_cells,
+    get_grid_preset_by_object_id,
+    get_grid_by_name,
+    clear_grid_cell,
+    get_all_grid_ids,
+    get_all_grids_data,
+    db_get_grid_last_change_time
+)
+from constants import (
+    DB_PMK_NAME,
+    CLN_GRID,
+    CLN_PRESETS,
+    PRES_TYPE_GRID,
+    CLN_WHEELSTACKS,
+    ADMIN_ACCESS_ROLES,
+    BASIC_PAGE_VIEW_ROLES,
+)
 
 
 router = APIRouter()
@@ -27,6 +47,7 @@ async def route_get_all_grids(
         only_id: bool = Query(False,
                               description='Provide only `objectId` of the elements'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     if only_id:
         result = await get_all_grid_ids(db, DB_PMK_NAME, CLN_GRID)
@@ -64,7 +85,8 @@ async def route_get_all_grids(
 )
 async def route_get_grid_by_object_id(
         grid_object_id: str = Path(..., description='`objectId` of stored `grid`'),
-        db: AsyncIOMotorClient = Depends(mongo_client.depend_client)
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     grid_id: ObjectId = await get_object_id(grid_object_id)
     res = await get_grid_by_object_id(grid_id, db, DB_PMK_NAME, CLN_GRID)
@@ -87,6 +109,7 @@ async def route_get_grid_by_name(
         name: str = Path(...,
                          description='`name` of stored `grid`'),
         db=Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     exist = await get_grid_by_name(name, db, DB_PMK_NAME, CLN_GRID)
     if exist is None:
@@ -110,6 +133,7 @@ async def route_get_grid_preset_by_object_id(
             description='`objectId` of the `grid` for which we need to get `preset` `objectId` used to create it',
         ),
         db=Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     logger.info(f'Received request for a `grid` with `objectId` = {grid_object_id}')
     grid_id: ObjectId = await get_object_id(grid_object_id)
@@ -144,6 +168,7 @@ async def route_create_empty_grid(
         name: str = Query(...,
                           description='required unique name of the `grid`'),
         db=Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(ADMIN_ACCESS_ROLES),
 ):
     logger.info(f'Received request to create a new `grid` by `objectId` of a `preset` = {preset_object_id}')
     cor_name: str = name.strip()
@@ -204,6 +229,7 @@ async def route_force_place_wheelstack_in_the_grid(
         column: str = Query(...,
                             descriptions='`column` of the cell placement'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(ADMIN_ACCESS_ROLES),
 ):
     grid_id: ObjectId = await get_object_id(grid_object_id)
     wheelstack_id: ObjectId = await get_object_id(wheelstack_object_id)
@@ -276,6 +302,7 @@ async def route_force_block_of_cell(
         grid_object_id: str = Path(...,
                                    description='`objectId` of the placement'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(ADMIN_ACCESS_ROLES),
 ):
     grid_id: ObjectId = await get_object_id(grid_object_id)
     res = await block_grid_cell(grid_id, row, column, db, DB_PMK_NAME, CLN_GRID)
@@ -300,6 +327,7 @@ async def route_force_unblock_of_cell(
         grid_object_id: str = Path(...,
                                    description='`objectId` of the placement'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(ADMIN_ACCESS_ROLES),
 ):
     grid_id: ObjectId = await get_object_id(grid_object_id)
     res = await unblock_grid_cell(grid_id, row, column, db, DB_PMK_NAME, CLN_GRID)
@@ -324,6 +352,7 @@ async def route_force_clear_of_cell(
         grid_object_id: str = Path(...,
                                    description='`objectId` of the placement'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(ADMIN_ACCESS_ROLES),
 ):
     grid_id: ObjectId = await get_object_id(grid_object_id)
     res = await clear_grid_cell(grid_id, row, column, db, DB_PMK_NAME, CLN_GRID)
@@ -344,6 +373,7 @@ async def route_get_change_time(
         grid_object_id: str = Path(...,
                                    description='`objectId` of the `grid` to search'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(ADMIN_ACCESS_ROLES),
 ):
     grid_id: ObjectId = await get_object_id(grid_object_id)
     res = await db_get_grid_last_change_time(grid_id, db, DB_PMK_NAME, CLN_GRID)

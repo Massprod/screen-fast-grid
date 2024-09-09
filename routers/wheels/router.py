@@ -1,29 +1,39 @@
 from bson import ObjectId
 from loguru import logger
-from utility.utilities import get_object_id, time_w_timezone
+from utility.utilities import get_object_id
 from .models.models import CreateWheelRequest
 from motor.motor_asyncio import AsyncIOMotorClient
 from database.mongo_connection import mongo_client
 from fastapi.responses import JSONResponse, Response
-from fastapi import APIRouter, Depends, HTTPException, status, Path, Body, Query
-from constants import (DB_PMK_NAME,
-                       CLN_WHEELS,
-                       PS_BASE_PLATFORM,
-                       CLN_WHEELSTACKS,
-                       CLN_BASE_PLATFORM,
-                       CLN_BATCH_NUMBERS
-                       )
-from .models.response_models import (
-                                     update_response_examples,
-                                     find_response_examples,
-                                     )
-from .crud import (db_insert_wheel, db_find_wheel,
-                   db_update_wheel, db_delete_wheel,
-                   wheel_make_json_friendly, db_find_wheel_by_object_id,
-                   db_get_all_wheels)
-from ..batch_numbers.crud import db_find_batch_number, db_create_batch_number
-from routers.wheelstacks.crud import db_find_wheelstack_by_object_id, db_update_wheelstack
 from ..base_platform.crud import db_update_platform_last_change
+from auth.jwt_validation import get_role_verification_dependency
+from ..batch_numbers.crud import db_find_batch_number, db_create_batch_number
+from fastapi import APIRouter, Depends, HTTPException, status, Path, Body, Query
+from routers.wheelstacks.crud import db_find_wheelstack_by_object_id, db_update_wheelstack
+from constants import (
+    DB_PMK_NAME,
+    CLN_WHEELS,
+    PS_BASE_PLATFORM,
+    CLN_WHEELSTACKS,
+    CLN_BASE_PLATFORM,
+    CLN_BATCH_NUMBERS,
+    BASIC_PAGE_VIEW_ROLES,
+    ADMIN_ACCESS_ROLES,
+)
+from .models.response_models import (
+    update_response_examples,
+    find_response_examples,
+)
+from .crud import (
+    db_insert_wheel,
+    db_find_wheel,
+    db_update_wheel,
+    db_delete_wheel,
+    wheel_make_json_friendly,
+    db_find_wheel_by_object_id,
+    db_get_all_wheels
+)
+
 
 router = APIRouter()
 
@@ -36,7 +46,8 @@ router = APIRouter()
 async def route_get_all_wheels(
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
         batch_number: str = Query('',
-                                  description='Select all with given `batchNumber`')
+                                  description='Select all with given `batchNumber`'),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     result = await db_get_all_wheels(batch_number, db, DB_PMK_NAME, CLN_WHEELS)
     cor_data: dict = {}
@@ -63,6 +74,7 @@ async def route_get_all_wheels(
 async def route_find_wheel(
         wheel_id: str = Path(description="The ID of the wheel to retrieve"),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     logger.info(f"Searching for a wheel with ID: {wheel_id}")
     result = await db_find_wheel(wheel_id, db, DB_PMK_NAME, CLN_WHEELS)
@@ -86,6 +98,7 @@ async def route_find_wheel(
 async def route_find_wheel_by_object_id(
         wheel_object_id: str = Path(description='`objectId` of the wheel to retrieve'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     wheel_id: ObjectId = await get_object_id(wheel_object_id)
     result = await db_find_wheel_by_object_id(wheel_id, db, DB_PMK_NAME, CLN_WHEELS)
@@ -131,6 +144,7 @@ async def route_force_update_wheel(
             }
         ),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(ADMIN_ACCESS_ROLES),
 ):
     wheel_id = await get_object_id(wheel_object_id)
     wheel_data = wheel.model_dump()
@@ -175,6 +189,7 @@ async def route_create_wheel(
             }
         ),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     # TODO: We need to extra check wheel Diameters when we creating and placing wheel in a stack.
     #  Because STACK can only contain same sized wheels.
@@ -283,6 +298,7 @@ async def route_create_wheel(
 async def route_delete_wheel(
         wheel_object_id: str = Path(description='`objectId` of the wheel to delete'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     wheel_id: ObjectId = await get_object_id(wheel_object_id)
     result = await db_delete_wheel(wheel_id, db, DB_PMK_NAME, CLN_WHEELS)
