@@ -1,0 +1,296 @@
+{
+  "bsonType": "object",
+  "required": ["createdAt", "placementType", "placementData", "wheelstacks", "wheels", "placementOrders"],
+  "properties": {
+    "_id": {
+      "bsonType": "objectId",
+      "description": "Unique identifier for the history record"
+    },
+    "createdAt": {
+      "bsonType": "date",
+      "description": "Timestamp for the history record creation"
+    },
+    "placementType": {
+      "bsonType": "string",
+      "enum": ["grid", "storage", "basePlatform"],
+      "description": "Type of the storage"
+    },
+    "placementData": {
+      "bsonType": "object",
+      "description": "All related placement data"
+    },
+    "wheelstacks": {
+      "bsonType": "object",
+      "description": "`key` == `_id` of the wheelstack and `value` all related data",
+      "additionalProperties": {
+        "bsonType": "object",
+        "required": [
+          "originalPisId",
+          "batchNumber",
+          "placement",
+          "rowPlacement",
+          "colPlacement",
+          "createdAt",
+          "lastChange",
+          "lastOrder",
+          "maxSize",
+          "blocked",
+          "wheels",
+          "status"
+        ],
+        "properties": {
+          "_id": {
+            "bsonType": "objectId",
+            "description": "must be an objectId and is required"
+          },
+          "originalPisId": {
+            "bsonType": "string",
+            "description": "original id of the wheelstack we got from PIS db"
+          },
+          "batchNumber": {
+            "bsonType": "string",
+            "description": "batch number of the WheelStack, we can't have wheels with different batchNumbers inside the one Wheelstack"
+          },
+          "placement": {
+            "bsonType": "object",
+            "required": ["type", "placementId"],
+            "properties": {
+              "type": {
+                "bsonType": "string",
+                "enum": ["grid", "basePlatform", "storage"],
+                "description": "Currently used placement type for the `wheelstack`"
+              },
+              "placementId": {
+                "bsonType": "objectId",
+                "description": "objectId of the placement (we can have multiple `grid`s `basePlatform`s with the same `preset`), or `storage`"
+              }
+            }
+          },
+          "rowPlacement": {
+            "bsonType": "string",
+            "description": "must be a string and is required"
+          },
+          "colPlacement": {
+            "bsonType": "string",
+            "description": "must be a string and is required"
+          },
+          "createdAt": {
+            "bsonType": "date",
+            "description": "must be a date and is required"
+          },
+          "lastChange": {
+            "bsonType": "date",
+            "description": "must be a date and is required"
+          },
+          "lastOrder": {
+            "bsonType": ["objectId", "null"],
+            "description": "`objectId` of the placed order, or `null` if no orders were ever placed"
+          },
+          "maxSize": {
+            "bsonType": "int",
+            "description": "must be an integer and is required",
+            "minimum": 1,
+            "maximum": 6
+          },
+          "blocked": {
+            "bsonType": "bool",
+            "description": "must be a boolean and is required"
+          },
+          "wheels": {
+            "bsonType": "array",
+            "items": {
+              "bsonType": "objectId",
+              "description": "must be an `objectId` of the placed `wheel`s"
+            },
+            "description": "must be an array of `objectIds` of the placed `wheel`s and is required",
+            "minItems": 0,
+            "maxItems": 6
+          },
+          "status": {
+            "bsonType": "string",
+            "enum": ["laboratory", "shipped", "grid", "basePlatform", "rejected", "storage"],
+            "description": "must be a string and is required"
+          }
+        }
+      }
+    },
+    "wheels": {
+      "bsonType": "object",
+      "description": "`key` == `_id` of the wheel, `value` all the related data",
+      "additionalProperties": {
+        "bsonType": "object",
+        "required": ["wheelId", "batchNumber", "wheelDiameter", "receiptDate", "status", "wheelStack"],
+        "properties": {
+          "_id": {
+            "bsonType": "objectId",
+            "description": "must be an objectId and its required"
+          },
+          "wheelId": {
+            "bsonType": "string",
+            "description": "must be a string and its required"
+          },
+          "batchNumber": {
+            "bsonType": "string",
+            "description": "must be a string and its required"
+          },
+          "wheelDiameter": {
+            "bsonType": "int",
+            "description": "must be an integer and its required, diameter of the wheel in mm",
+            "minimum": 1,
+            "maximum": 100000
+          },
+          "receiptDate": {
+            "bsonType": "date",
+            "description": "must be a date and its required"
+          },
+          "status": {
+            "bsonType": "string",
+            "enum": ["laboratory", "shipped", "grid", "basePlatform", "rejected", "storage"],
+            "description": "must be a string and is required"
+          },
+          "wheelStack": {
+            "bsonType": ["null", "object"],
+            "required": ["wheelStackId", "wheelStackPosition"],
+            "properties": {
+              "wheelStackId": {
+                "bsonType": "objectId",
+                "description": "indicates ID of the wheelstack containing it"
+              },
+              "wheelStackPosition": {
+                "bsonType": "int",
+                "description": "indicates position of the Wheel in the Wheelstack",
+                "minimum": 0,
+                "maximum": 6
+              }
+            }
+          }
+        }
+      }
+    },
+    "placementOrders": {
+      "bsonType": "object",
+      "description": "`key` == `_id` of the order, `value` all related orderData",
+      "additionalProperties": {
+        "bsonType": "object",
+        "required": ["createdAt", "orderName", "affectedWheelStacks", "affectedWheels",
+          "orderDescription", "source", "destination", "orderType", "status", "lastUpdated"],
+        "properties": {
+          "_id": {
+            "bsonType": "objectId",
+            "description": "Unique identifier for the order"
+          },
+          "orderName": {
+            "bsonType": "string",
+            "description": "Optional order name"
+          },
+          "orderDescription": {
+            "bsonType": "string",
+            "description": "Optional order description"
+          },
+          "createdAt": {
+            "bsonType": "date",
+            "description": "Timestamp for when the order was created"
+          },
+          "lastUpdated": {
+            "bsonType": "date",
+            "description": "Timestamp for the last update of the order"
+          },
+          "source": {
+            "bsonType": "object",
+            "required": ["placementType", "placementId", "rowPlacement", "columnPlacement"],
+            "properties": {
+              "placementType": {
+                "bsonType": "string",
+                "enum": ["grid", "basePlatform", "storage"],
+                "description": "Source type (`grid` or `basePlatform`), from where we're taking it"
+              },
+              "placementId": {
+                "bsonType": "objectId",
+                "description": "objectId of the placement (we can have multiple `grid`s `basePlatform`s with the same `preset`)"
+              },
+              "rowPlacement": {
+                "bsonType": "string",
+                "description": "string identifier for the `row` of a source cell"
+              },
+              "columnPlacement": {
+                "bsonType": "string",
+                "description": "string identifier for the `column` of a source cell"
+              }
+            }
+          },
+          "destination": {
+            "bsonType": "object",
+            "required": ["placementType", "placementId","rowPlacement", "columnPlacement"],
+            "properties": {
+              "placementType": {
+                "bsonType": "string",
+                "enum": ["grid", "storage"],
+                "description": "We can move only from `basePlatform` -> `grid` or inside the `grid. Even if we `moveToLaboratory` we still move `wheelStack` to some `extra` element in a `grid` and later it's transitioned to lab"
+              },
+              "placementId": {
+                "bsonType": "objectId",
+                "description": "objectId of the placement (we can have multiple `grid`s `basePlatform`s with the same `preset`)"
+              },
+              "rowPlacement": {
+                "bsonType": "string",
+                "description": "string identifier for the `row` of a destination cell"
+              },
+              "columnPlacement": {
+                "bsonType": "string",
+                "description": "string identifier for the `column` of a destination cell"
+              }
+            }
+          },
+          "orderType": {
+            "bsonType": "string",
+            "enum": ["moveWholeStack", "moveTopWheel", "moveToLaboratory", "mergeWheelStacks", "moveToProcessing", "moveToRejected", "moveToStorage"],
+            "description": "Type of operation (moveWholeStack, moveTopWheel, moveToLaboratory, mergeWheelStack)"
+          },
+          "affectedWheelStacks": {
+            "bsonType": "object",
+            "required": ["source", "destination"],
+            "properties": {
+              "source": {
+                "bsonType": ["objectId"],
+                "description": "`objectId` of the wheelstack currently placed on the source cell, source cell can't be empty"
+              },
+              "destination": {
+                "bsonType": ["null","objectId"],
+                "description": "`objectId` of the wheelStack currently placed on the destination cell, destination cell can be empty"
+              }
+            }
+          },
+          "affectedWheels": {
+            "bsonType": "object",
+            "required": ["source", "destination"],
+            "properties": {
+              "source": {
+                "bsonType": "array",
+                "items": {
+                  "bsonType": "objectId",
+                  "description": "`objectId`'s of the wheels stored in affected wheelStack on the source cell"
+                }
+              },
+              "destination": {
+                "bsonType": "array",
+                "items": {
+                  "bsonType": "objectId",
+                  "description": "`objectId`'s of the wheels stored in affected wheelStack on the destination cell"
+                  }
+                }
+              }
+          },
+          "status": {
+            "bsonType": "string",
+            "enum": ["pending"],
+            "description": "Status of the order, in `activeOrder` we can only have `pending` orders"
+          }
+        }
+      }
+    }
+  },
+  "indexes": [
+    { "keys": { "createdAt":  1 }, "options":  { "name":  "createdAt_ascending_index"} },
+    { "keys": { "placementType":  1 }, "options": { "name": "placementType_ascending_index" } }
+  ]
+}
