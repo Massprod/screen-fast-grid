@@ -1,6 +1,6 @@
 {
   "bsonType": "object",
-  "required": ["createdAt", "placementType", "placementData", "wheelstacks", "wheels", "placementOrders"],
+  "required": ["createdAt", "placementType", "placementData", "wheelstacksData", "placementOrders"],
   "properties": {
     "_id": {
       "bsonType": "objectId",
@@ -238,6 +238,10 @@
   },
   "indexes": [
     { "keys": { "createdAt":  1 }, "options":  { "name":  "createdAt_ascending_index"} },
-    { "keys": { "placementType":  1 }, "options": { "name": "placementType_ascending_index" } }
+    { "keys": { "placementType":  1 }, "options": { "name": "placementType_ascending_index" } },
+    { "keys": { "wheels": 1 }, "options":  { "name": "wheels_ascending_index"} },
+    { "keys": { "placementData._id":  1 }, "options": { "name": "Fast query by `placementId`"} },
+    { "keys": { "wheelstacksData.wheels" :  1 }, "options":  { "name": "Fast query by `wheelObjectId`" } },
+    { "keys": { "placementOrders._id": 1 }, "options": { "name": "Fast query by `orderObjectId`"} }
   ]
 }
