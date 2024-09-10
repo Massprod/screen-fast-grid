@@ -4,12 +4,13 @@ from datetime import datetime, timezone
 from fastapi.responses import JSONResponse
 from database.mongo_connection import mongo_client
 from motor.motor_asyncio import AsyncIOMotorClient
-from constants import DB_PMK_NAME, CLN_PLACEMENT_HISTORY
 from fastapi import APIRouter, Depends, status, Body, Query
+from auth.jwt_validation import get_role_verification_dependency
 from routers.history.history_actions import gather_placement_history_data
 from routers.history.models.models import ForceHistoryRecord, BasicPlacementTypes
 from routers.history.crud import db_history_create_record, db_history_get_records
 from utility.utilities import get_object_id, convert_object_id_and_datetime_to_str
+from constants import DB_PMK_NAME, CLN_PLACEMENT_HISTORY, ADMIN_ACCESS_ROLES, BASIC_PAGE_VIEW_ROLES
 
 
 # We need to record at times:
@@ -33,8 +34,7 @@ async def route_post_force_history_record(
         placement_info: ForceHistoryRecord = Body(...,
                                                   description='Basic required placement data'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        # TODO:
-        #  ADD ADMIN TOKEN
+        token_data: dict = get_role_verification_dependency(ADMIN_ACCESS_ROLES),
 ):
     placement_info = placement_info.model_dump()
     placement_object_id: ObjectId = await get_object_id(placement_info['placementId'])
@@ -82,6 +82,7 @@ async def route_get_history_records(
             description='`placementType` of a placement to filter records on',
         ),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     if placement_id:
         placement_id: ObjectId = await get_object_id(placement_id)
