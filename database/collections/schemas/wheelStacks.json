@@ -98,6 +98,7 @@
     { "keys": { "blocked": 1 }, "options": { "name": "blocked_index" } },
     { "keys": { "wheels": 1 }, "options": { "name": "wheels_index" } },
     { "keys": { "status": 1 }, "options": { "name": "status_index" } },
-    { "keys": { "originalPisId" :  1 }, "options":  { "name": "originalPisId" } }
+    { "keys": { "originalPisId" :  1 }, "options":  { "name": "originalPisId" } },
+    { "keys": { "batchNumber": 1 }, "options": { "name": "Query by `batchNumber`" } }
   ]
 }
