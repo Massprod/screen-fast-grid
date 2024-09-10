@@ -291,7 +291,7 @@ async def db_storage_delete_empty_batches(
     for batch_number in batch_numbers:
         update['$unset'][f'elements.{batch_number}'] = 1
     try:
-        result = collection.update_one(query, update)
+        result = await collection.update_one(query, update)
         logger.info(
             f'Successfully cleared all empty `batchNumbers` in `storage` = {storage_id}' + db_info
         )
