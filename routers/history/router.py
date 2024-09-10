@@ -1,13 +1,14 @@
 from bson import ObjectId
 from loguru import logger
+from datetime import datetime, timezone
 from fastapi.responses import JSONResponse
 from database.mongo_connection import mongo_client
 from motor.motor_asyncio import AsyncIOMotorClient
-from fastapi import APIRouter, Depends, status, Body
 from constants import DB_PMK_NAME, CLN_PLACEMENT_HISTORY
-from routers.history.crud import db_history_create_record
-from routers.history.models.models import ForceHistoryRecord
+from fastapi import APIRouter, Depends, status, Body, Query
 from routers.history.history_actions import gather_placement_history_data
+from routers.history.models.models import ForceHistoryRecord, BasicPlacementTypes
+from routers.history.crud import db_history_create_record, db_history_get_records
 from utility.utilities import get_object_id, convert_object_id_and_datetime_to_str
 
 
@@ -32,7 +33,8 @@ async def route_post_force_history_record(
         placement_info: ForceHistoryRecord = Body(...,
                                                   description='Basic required placement data'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        # ADD ADMIN TOKEN
+        # TODO:
+        #  ADD ADMIN TOKEN
 ):
     placement_info = placement_info.model_dump()
     placement_object_id: ObjectId = await get_object_id(placement_info['placementId'])
@@ -47,5 +49,47 @@ async def route_post_force_history_record(
         content={
             '_id': created_id
         },
+        status_code=status.HTTP_200_OK,
+    )
+
+
+@router.get(
+    path='/all',
+    description='Gathers and returns all db records in provided period.'
+                ' If no period provided, returns all records',
+    name='Get History Records',
+)
+async def route_get_history_records(
+        include_data: bool = Query(
+            default=True,
+            description='Include data of the records,'
+                        ' or just provide their basic info: `_id`, `createdAt, `placementType`',
+        ),
+        period_start: datetime = Query(
+            default=datetime(1970, 1, 1, tzinfo=timezone.utc),
+            description='Start date of the period, default is Unix Epoch (start of time)',
+        ),
+        period_end: datetime = Query(
+            default=datetime.now(timezone.utc),
+            description='End date of the period, default is time of the request',
+        ),
+        placement_id: str = Query(
+            None,
+            description='`ObjectId` of a placement to filter records on',
+        ),
+        placement_type: BasicPlacementTypes = Query(
+            None,
+            description='`placementType` of a placement to filter records on',
+        ),
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+):
+    if placement_id:
+        placement_id: ObjectId = await get_object_id(placement_id)
+    history_records: list[dict] = await db_history_get_records(
+        include_data, period_start, period_end, db, DB_PMK_NAME, CLN_PLACEMENT_HISTORY, placement_id, placement_type
+    )
+    cor_history_records: list[dict] = convert_object_id_and_datetime_to_str(history_records)
+    return JSONResponse(
+        content=cor_history_records,
         status_code=status.HTTP_200_OK,
     )
