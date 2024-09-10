@@ -114,59 +114,6 @@
         }
       }
     },
-    "wheels": {
-      "bsonType": "object",
-      "description": "`key` == `_id` of the wheel, `value` all the related data",
-      "additionalProperties": {
-        "bsonType": "object",
-        "required": ["wheelId", "batchNumber", "wheelDiameter", "receiptDate", "status", "wheelStack"],
-        "properties": {
-          "_id": {
-            "bsonType": "objectId",
-            "description": "must be an objectId and its required"
-          },
-          "wheelId": {
-            "bsonType": "string",
-            "description": "must be a string and its required"
-          },
-          "batchNumber": {
-            "bsonType": "string",
-            "description": "must be a string and its required"
-          },
-          "wheelDiameter": {
-            "bsonType": "int",
-            "description": "must be an integer and its required, diameter of the wheel in mm",
-            "minimum": 1,
-            "maximum": 100000
-          },
-          "receiptDate": {
-            "bsonType": "date",
-            "description": "must be a date and its required"
-          },
-          "status": {
-            "bsonType": "string",
-            "enum": ["laboratory", "shipped", "grid", "basePlatform", "rejected", "storage"],
-            "description": "must be a string and is required"
-          },
-          "wheelStack": {
-            "bsonType": ["null", "object"],
-            "required": ["wheelStackId", "wheelStackPosition"],
-            "properties": {
-              "wheelStackId": {
-                "bsonType": "objectId",
-                "description": "indicates ID of the wheelstack containing it"
-              },
-              "wheelStackPosition": {
-                "bsonType": "int",
-                "description": "indicates position of the Wheel in the Wheelstack",
-                "minimum": 0,
-                "maximum": 6
-              }
-            }
-          }
-        }
-      }
-    },
     "placementOrders": {
       "bsonType": "object",
       "description": "`key` == `_id` of the order, `value` all related orderData",
