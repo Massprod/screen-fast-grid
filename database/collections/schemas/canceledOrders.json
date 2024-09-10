@@ -124,12 +124,18 @@
     }
   },
   "indexes": [
-  { "keys": { "createdAt": -1 }, "options": { "name": "createdAt_desc_index" } },
-  { "keys": { "orderType": 1, "createdAt": -1 }, "options": { "name": "orderType_createdAt_index" } },
-  { "keys": { "lastUpdated": -1 }, "options": { "name": "lastUpdated_desc_index" } },
-  { "keys": { "orderName": 1 }, "options": { "name": "orderName_index" } },
-  { "keys": { "canceledAt": -1 }, "options": { "name": "canceledAt_desc_index" } },
-  { "keys": { "orderType": 1, "canceledAt": -1 }, "options": { "name": "orderType_canceledAt_index" } },
-  { "keys": { "orderType": 1, "lastUpdated": -1 }, "options": { "name": "orderType_lastUpdated_index" } }
-]
+    { "keys": { "createdAt": -1 }, "options": { "name": "createdAt_desc_index" } },
+    { "keys": { "orderType": 1, "createdAt": -1 }, "options": { "name": "orderType_createdAt_index" } },
+    { "keys": { "lastUpdated": -1 }, "options": { "name": "lastUpdated_desc_index" } },
+    { "keys": { "orderName": 1 }, "options": { "name": "orderName_index" } },
+    { "keys": { "canceledAt": -1 }, "options": { "name": "canceledAt_desc_index" } },
+    { "keys": { "orderType": 1, "canceledAt": -1 }, "options": { "name": "orderType_canceledAt_index" } },
+    { "keys": { "orderType": 1, "lastUpdated": -1 }, "options": { "name": "orderType_lastUpdated_index" } },
+    { "keys": { "source.placementType": 1, "source.placementId":  1 }, "options":  { "name": "Fast query by source placementData" } },
+    { "keys": { "destination.placementType": 1, "destination.placementId": 1 }, "options": { "name": "Fast query by destination placementData" } },
+    { "keys": { "affectedWheelStacks.source": 1 }, "options": { "name": "Fast query by source wheelstack" } },
+    { "keys": { "affectedWheelStacks.destination": 1 }, "options": { "name": "Fast query by destination wheelstack" } },
+    { "keys": { "affectedWheels.source": 1 }, "options": { "name": "Fast query by source wheels" } },
+    { "keys": { "affectedWheels.destination": 1 }, "options": { "name": "Fast query by destination wheels" } }
+  ]
 }
