@@ -20,9 +20,9 @@
       "description": "All related placement data"
     },
     "wheelstacks": {
-      "bsonType": "object",
-      "description": "`key` == `_id` of the wheelstack and `value` all related data",
-      "additionalProperties": {
+      "bsonType": "array",
+      "description": "array with all wheelstacks present in the placement at the time of record",
+      "items": {
         "bsonType": "object",
         "required": [
           "originalPisId",
@@ -115,9 +115,9 @@
       }
     },
     "placementOrders": {
-      "bsonType": "object",
-      "description": "`key` == `_id` of the order, `value` all related orderData",
-      "additionalProperties": {
+      "bsonType": "array",
+      "description": "Array with all `activeOrder` at the time of recording",
+      "items": {
         "bsonType": "object",
         "required": ["createdAt", "orderName", "affectedWheelStacks", "affectedWheels",
           "orderDescription", "source", "destination", "orderType", "status", "lastUpdated"],
@@ -242,6 +242,8 @@
     { "keys": { "wheels": 1 }, "options":  { "name": "wheels_ascending_index"} },
     { "keys": { "placementData._id":  1 }, "options": { "name": "Fast query by `placementId`"} },
     { "keys": { "wheelstacksData.wheels" :  1 }, "options":  { "name": "Fast query by `wheelObjectId`" } },
-    { "keys": { "placementOrders._id": 1 }, "options": { "name": "Fast query by `orderObjectId`"} }
+    { "keys": { "placementOrders._id": 1 }, "options": { "name": "Fast query by `orderObjectId`"} },
+    { "keys": { "placementOrders.source.placementType": 1, "placementOrders.source.placementId": 1 }, "options": { "name": "Fast query by source placementData" } },
+    { "keys": { "placementOrder.destination.placementType": 1, "placementOrders.destination.placementId": 1 }, "options": { "name": "Fast query by destination placementData" } }
   ]
 }
