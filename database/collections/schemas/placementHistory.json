@@ -19,7 +19,7 @@
       "bsonType": "object",
       "description": "All related placement data"
     },
-    "wheelstacks": {
+    "wheelstacksData": {
       "bsonType": "array",
       "description": "array with all wheelstacks present in the placement at the time of record",
       "items": {
