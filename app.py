@@ -14,6 +14,7 @@ from routers.base_platform.router import router as platform_router
 from routers.wheelstacks.router import router as wheelstack_router
 from routers.presets.crud import add_new_preset, get_preset_by_name
 from routers.batch_numbers.router import router as batch_numbers_router
+from routers.history.router import router as history_router
 from database.collections.collections import create_basic_collections
 from constants import PRES_PMK_GRID, PRES_PMK_PLATFORM, DB_PMK_NAME, CLN_PRESETS
 from database.presets.presets import create_pmk_grid_preset, create_pmk_platform_preset
@@ -81,6 +82,7 @@ app.include_router(wheel_router, prefix='/wheels', tags=['Wheels'])
 app.include_router(wheelstack_router, prefix='/wheelstacks', tags=['WheelStack'])
 app.include_router(orders_router, prefix='/orders', tags=['Orders'])
 app.include_router(storages_router, prefix='/storages', tags=['Storages'])
+app.include_router(history_router, prefix='/history', tags=['History'])
 
 
 # Deprecated, changed to `lifespan`

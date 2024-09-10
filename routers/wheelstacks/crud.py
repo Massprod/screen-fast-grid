@@ -1,10 +1,9 @@
 from loguru import logger
+from bson import ObjectId
 from pymongo.errors import PyMongoError
 from fastapi import HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
-from bson import ObjectId
-from constants import PRES_TYPE_GRID
-from utility.utilities import get_db_collection, time_w_timezone
+from utility.utilities import get_db_collection, time_w_timezone, log_db_record, log_db_error_record
 
 
 async def wheelstack_make_json_friendly(wheelstack_data):
@@ -205,3 +204,41 @@ async def db_get_wheelstack_last_change(
     except PyMongoError as e:
         logger.error(f"Error searching `wheelStack`: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database search error")
+
+
+async def db_history_get_placement_wheelstacks(
+        placement_id: ObjectId,
+        placement_type: str,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    db_info = await log_db_record(db_name, db_collection)
+    logger.info(
+        f'Attempt to gather `wheelstacksData` for `placementId` => {placement_id}'
+        f' of type {placement_type}' + db_info
+    )
+    query = {
+        '$and': [
+            {'placement.placementId': placement_id},
+            {'placement.type': placement_type}
+        ]
+    }
+    try:
+        result = await collection.find(query).to_list(length=None)
+        logger.info(
+            f'Successfully gathered `wheelstacksData` for `placementId` => {placement_id}'
+            f' of type {placement_type}' + db_info
+        )
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        logger.error(
+            f'Error while gathering `wheelstacksData` for `placementId` => {placement_id}'
+            f' of type {placement_type}' + db_info + error_extra
+        )
+        raise HTTPException(
+            detail='Error while gathering data',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

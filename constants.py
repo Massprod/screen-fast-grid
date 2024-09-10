@@ -1,6 +1,12 @@
 from os import getenv
 from pathlib import Path
 
+
+# Placement types
+PT_GRID = 'grid'
+PT_BASE_PLATFORM = 'basePlatform'
+PT_STORAGE = 'storage'
+
 # Order options ENUM.
 ORDER_MOVE_WHOLE_STACK: str = 'moveWholeStack'
 ORDER_MOVE_TOP_WHEEL: str = 'moveTopWheel'
@@ -36,9 +42,16 @@ CLN_WHEELS: str = 'wheels'
 CLN_PRESETS: str = 'presets'
 CLN_BATCH_NUMBERS: str = 'batchNumbers'
 CLN_STORAGES: str = 'storages'
+CLN_PLACEMENT_HISTORY: str = 'placementHistory'
 # PRESETS
 PRES_PMK_GRID: str = 'pmkGrid'
 PRES_PMK_PLATFORM: str = 'pmkBasePlatform'
+# Placement collections
+PLACEMENT_COLLECTIONS: dict[str, str] = {
+    PT_GRID: CLN_GRID,
+    PT_BASE_PLATFORM: CLN_BASE_PLATFORM,
+    PT_STORAGE: CLN_STORAGES,
+}
 
 # PRESET TYPES
 PRES_TYPE_GRID: str = 'grid'

@@ -1,11 +1,10 @@
 import asyncio
-
+from bson import ObjectId
 from loguru import logger
 from pymongo.errors import PyMongoError
 from fastapi import HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
-from bson import ObjectId
-from utility.utilities import get_db_collection
+from utility.utilities import get_db_collection, log_db_record, log_db_error_record
 
 
 async def order_make_json_friendly(order_data: dict):
@@ -142,3 +141,51 @@ async def db_delete_order(
     except PyMongoError as e:
         logger.error(f"Error deleting Order: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error")
+
+
+async def db_history_get_orders_by_placement(
+        placement_id: ObjectId,
+        placement_type: str,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    db_info = await log_db_record(db_name, db_collection)
+    logger.info(
+        f'Attempt to gather `ordersData` for `placementId` => {placement_id}'
+        f' of type {placement_type}' + db_info
+    )
+    query = {
+        '$or': [
+            {
+                '$and': [
+                    {'source.placementType': placement_type},
+                    {'source.placementId': placement_id}
+                ]
+            },
+            {
+                '$and': [
+                    {'destination.placementType': placement_type},
+                    {'destination.placementId': placement_id}
+                ]
+            }
+        ]
+    }
+    try:
+        result = await collection.find(query).to_list(length=None)
+        logger.info(
+            f'Successfully gathered `ordersData` for `placementId` => {placement_id}'
+            f' of type {placement_type}' + db_info
+        )
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        logger.error(
+            f'Error while gathering `ordersDat` for `placementId` => {placement_id}'
+            f' of type {placement_type}' + db_info + error_extra
+        )
+        raise HTTPException(
+            detail='Error while gathering data',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
