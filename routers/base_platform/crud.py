@@ -44,14 +44,23 @@ async def get_all_platforms_data(
         )
 
 
-async def get_all_platform_ids(
+async def get_all_platforms(
+        include_data: bool,
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str
 ):
     collection = await get_db_collection(db, db_name, db_collection)
+    query = {}
+    projection = {}
+    if not include_data:
+        projection = {
+            'rowsOrder': 0,
+            'rows': 0,
+            'extra': 0,
+        }
     try:
-        res = await collection.find({}, {'_id': 1}).to_list(length=None)
+        res = await collection.find(query, projection).to_list(length=None)
         return res
     except PyMongoError as error:
         logger.error(f'Error while searching in DB: {error}')

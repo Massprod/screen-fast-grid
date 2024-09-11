@@ -1,6 +1,5 @@
 from loguru import logger
 from bson import ObjectId
-from utility.utilities import get_object_id
 from routers.presets.crud import get_preset_by_id
 from motor.motor_asyncio import AsyncIOMotorClient
 from database.mongo_connection import mongo_client
@@ -8,6 +7,7 @@ from fastapi.responses import JSONResponse, Response
 from ..wheelstacks.crud import db_find_wheelstack_by_object_id
 from auth.jwt_validation import get_role_verification_dependency
 from fastapi import APIRouter, Depends, HTTPException, status, Path, Query
+from utility.utilities import get_object_id, convert_object_id_and_datetime_to_str
 from .crud import (
     get_grid_by_object_id,
     grid_make_json_friendly,
@@ -19,7 +19,7 @@ from .crud import (
     get_grid_preset_by_object_id,
     get_grid_by_name,
     clear_grid_cell,
-    get_all_grid_ids,
+    get_all_grids,
     get_all_grids_data,
     db_get_grid_last_change_time
 )
@@ -33,7 +33,6 @@ from constants import (
     BASIC_PAGE_VIEW_ROLES,
 )
 
-
 router = APIRouter()
 
 
@@ -44,33 +43,37 @@ router = APIRouter()
     name='Get All'
 )
 async def route_get_all_grids(
-        only_id: bool = Query(False,
-                              description='Provide only `objectId` of the elements'),
+        include_data: bool = Query(False,
+                                   description='Include `row`s and `extra`s data'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
         token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
-    if only_id:
-        result = await get_all_grid_ids(db, DB_PMK_NAME, CLN_GRID)
-        for index, grid_id in enumerate(result):
-            result[index] = str(grid_id)
+    cor_data: list[dict] = []
+    if not include_data:
+        result = await get_all_grids(include_data, db, DB_PMK_NAME, CLN_GRID)
         if 0 == len(result):
             raise HTTPException(
                 detail='No `grid`s in DB',
                 status_code=status.HTTP_404_NOT_FOUND,
             )
+        for record in result:
+            cor_data.append(
+                convert_object_id_and_datetime_to_str(record)
+            )
         return JSONResponse(
-            content=result,
+            content=cor_data,
             status_code=status.HTTP_200_OK,
         )
-    cor_data: dict = {}
     result = await get_all_grids_data(db, DB_PMK_NAME, CLN_GRID)
     if 0 == len(result):
         raise HTTPException(
             detail='No `grid`s in DB',
             status_code=status.HTTP_404_NOT_FOUND,
         )
-    for grid in result:
-        cor_data[str(grid['_id'])] = await grid_make_json_friendly(grid)
+    for record in result:
+        cor_data.append(
+            convert_object_id_and_datetime_to_str(record)
+        )
     return JSONResponse(
         content=cor_data,
         status_code=status.HTTP_200_OK,
