@@ -8,9 +8,9 @@ from fastapi import APIRouter, Depends, status, Body, Query
 from auth.jwt_validation import get_role_verification_dependency
 from routers.history.history_actions import gather_placement_history_data
 from routers.history.models.models import ForceHistoryRecord, BasicPlacementTypes
-from routers.history.crud import db_history_create_record, db_history_get_records
 from utility.utilities import get_object_id, convert_object_id_and_datetime_to_str
 from constants import DB_PMK_NAME, CLN_PLACEMENT_HISTORY, ADMIN_ACCESS_ROLES, BASIC_PAGE_VIEW_ROLES
+from routers.history.crud import db_history_create_record, db_history_get_records, db_history_get_record
 
 
 # We need to record at times:
@@ -92,5 +92,34 @@ async def route_get_history_records(
     cor_history_records: list[dict] = convert_object_id_and_datetime_to_str(history_records)
     return JSONResponse(
         content=cor_history_records,
+        status_code=status.HTTP_200_OK,
+    )
+
+
+@router.get(
+    path='/record',
+    description='Get history record data by provided `ObjectId`',
+    name='Get History Record',
+)
+async def route_get_history_record(
+        include_data: bool = Query(
+            default=True,
+            description='Include data of the record,'
+                        ' or just provide their basic info: `_id`, `createdAt, `placementType`',
+        ),
+        record_id: str = Query(
+            default=...,
+            description='Required `ObjectId` of the record to choose',
+        ),
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
+):
+    record_object_id = await get_object_id(record_id)
+    history_record = await db_history_get_record(
+        include_data, record_object_id, db, DB_PMK_NAME, CLN_PLACEMENT_HISTORY
+    )
+    cor_history_record = convert_object_id_and_datetime_to_str(history_record)
+    return JSONResponse(
+        content=cor_history_record,
         status_code=status.HTTP_200_OK,
     )

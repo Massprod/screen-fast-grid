@@ -127,3 +127,38 @@ async def db_history_get_records(
             detail='Error while gathering `historyRecord`s data',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+async def db_history_get_record(
+        include_data: bool,
+        record_id: ObjectId,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    db_info = await log_db_record(db_name, db_collection)
+    query = {
+        '_id': record_id,
+    }
+    projection = {}
+    if not include_data:
+        projection = {
+            '_id': 1,
+            'createdAt': 1,
+            'placementType': 1,
+        }
+    log_str: str = f'Attempt to gather `historyRecord` data => {record_id} | With data included = {include_data}'
+    logger.info(log_str + db_info)
+    try:
+        result = await collection.find_one(query, projection)
+        logger.info(f'Successfully gathered `historyRecord` data => {record_id}')
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        error_str: str = f'Error while gathering `historyRecord` data => {record_id}'
+        logger.error(error_str + db_info + error_extra)
+        raise HTTPException(
+            detail='Error while gathering `historyRecord` data',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
