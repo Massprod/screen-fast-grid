@@ -2,6 +2,7 @@ from loguru import logger
 from bson import ObjectId
 from pymongo.errors import PyMongoError
 from fastapi import HTTPException, status
+from constants import PS_SHIPPED, PS_REJECTED
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
 from utility.utilities import get_db_collection, time_w_timezone, log_db_record, log_db_error_record
 
@@ -177,7 +178,7 @@ async def db_update_wheelstack(
         '$set': new_data
     }
     try:
-        result = await collection.update_one(query, update, session=session,)
+        result = await collection.update_one(query, update, session=session, )
         return result
     except PyMongoError as e:
         logger.error(f"Error updating `wheelStack`: {e}")
@@ -222,7 +223,11 @@ async def db_history_get_placement_wheelstacks(
     query = {
         '$and': [
             {'placement.placementId': placement_id},
-            {'placement.type': placement_type}
+            {'placement.type': placement_type},
+            {'status': {
+                '$nin': [PS_SHIPPED, PS_REJECTED]
+            },
+            },
         ]
     }
     try:
