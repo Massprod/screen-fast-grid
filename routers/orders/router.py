@@ -5,7 +5,8 @@ from database.mongo_connection import mongo_client
 from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi.responses import JSONResponse, Response
 from auth.jwt_validation import get_role_verification_dependency
-from fastapi import APIRouter, Depends, HTTPException, status, Body, Path, Query
+from routers.history.history_actions import background_history_record
+from fastapi import APIRouter, Depends, HTTPException, status, Body, Path, Query, BackgroundTasks
 from routers.orders.crud import (
     db_find_order_by_object_id,
     db_get_all_orders,
@@ -46,7 +47,6 @@ from routers.orders.orders_creation import (
     orders_create_bulk_move_to_pro_rej_orders,
     orders_create_move_to_storage,
     orders_create_move_from_storage_whole_stack,
-    orders_create_move_from_storage_whole_stack,
     orders_create_move_to_pro_rej_from_storage,
     orders_create_move_from_storage_to_storage_whole_stack,
     orders_create_move_from_storage_to_lab,
@@ -64,7 +64,6 @@ from constants import (
     ORDER_MOVE_TO_STORAGE,
     PS_STORAGE,
     BASIC_PAGE_VIEW_ROLES,
-    ADMIN_ACCESS_ROLES,
 )
 
 
@@ -167,6 +166,7 @@ async def route_get_all_orders(
     name='New Order',
 )
 async def route_post_create_order_move(
+        background_tasks: BackgroundTasks,
         order_data: CreateMoveOrderRequest = Body(...,
                                                   description='all required data for a new `order`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
@@ -177,6 +177,17 @@ async def route_post_create_order_move(
     if ORDER_MOVE_WHOLE_STACK == data['orderType']:
         logger.info(f'Creating order of type = `{ORDER_MOVE_WHOLE_STACK}`')
         created_order_id = await orders_create_move_whole_wheelstack(db, data)
+    # + BG record +
+    source_id = await get_object_id(data['source']['placementId'])
+    source_type = data['source']['placementType']
+    destination_id = await get_object_id(data['destination']['placementId'])
+    destination_type = data['destination']['placementType']
+    if source_id == destination_id:
+        background_tasks.add_task(background_history_record, source_id, source_type, db)
+    else:
+        background_tasks.add_task(background_history_record, source_id, source_type, db)
+        background_tasks.add_task(background_history_record, destination_id, destination_type, db)
+    # - BG record -
     return JSONResponse(
         content={
             '_id': str(created_order_id),
@@ -191,6 +202,7 @@ async def route_post_create_order_move(
     name='New Order',
 )
 async def route_post_create_order_move_to_lab(
+        background_tasks: BackgroundTasks,
         order_data: CreateLabOrderRequest = Body(...,
                                                  description='all required data for a new lab `order`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
@@ -199,6 +211,17 @@ async def route_post_create_order_move_to_lab(
     data = order_data.model_dump()
     logger.info(f'Creating order of type = `{ORDER_MOVE_TO_LABORATORY}`')
     created_order_id = await orders_create_move_to_laboratory(db, data)
+    # + BG record +
+    source_id = await get_object_id(data['source']['placementId'])
+    source_type = data['source']['placementType']
+    destination_id = await get_object_id(data['destination']['placementId'])
+    destination_type = data['destination']['placementType']
+    if source_id == destination_id:
+        background_tasks.add_task(background_history_record, source_id, source_type, db)
+    else:
+        background_tasks.add_task(background_history_record, source_id, source_type, db)
+        background_tasks.add_task(background_history_record, destination_id, destination_type, db)
+    # - BG record -
     return JSONResponse(
         content={
             '_id': str(created_order_id),
@@ -213,6 +236,7 @@ async def route_post_create_order_move_to_lab(
     name='New Order',
 )
 async def route_post_create_order_move_to_processing(
+        background_tasks: BackgroundTasks,
         order_data: CreateProcessingOrderRequest = Body(...,
                                                         description='all required data for a new processing `order`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
@@ -221,6 +245,17 @@ async def route_post_create_order_move_to_processing(
     data = order_data.model_dump()
     logger.info(f'Request to create order of type = {ORDER_MOVE_TO_PROCESSING}')
     created_order_id = await orders_create_move_to_processing(db, data)
+    # + BG record +
+    source_id = await get_object_id(data['source']['placementId'])
+    source_type = data['source']['placementType']
+    destination_id = await get_object_id(data['destination']['placementId'])
+    destination_type = data['destination']['placementType']
+    if source_id == destination_id:
+        background_tasks.add_task(background_history_record, source_id, source_type, db)
+    else:
+        background_tasks.add_task(background_history_record, source_id, source_type, db)
+        background_tasks.add_task(background_history_record, destination_id, destination_type, db)
+    # - BG record -
     return JSONResponse(
         content={
             '_id': str(created_order_id),
@@ -235,6 +270,7 @@ async def route_post_create_order_move_to_processing(
     name='New Bulk Orders',
 )
 async def route_post_create_bulk_orders_move_to_pro_rej(
+        background_tasks: BackgroundTasks,
         order_data: CreateBulkProcessingOrderRequest = Body(...,
                                                             description='basic data'),
         from_everywhere: bool = Query(False,
@@ -246,6 +282,17 @@ async def route_post_create_bulk_orders_move_to_pro_rej(
     created_orders = await orders_create_bulk_move_to_pro_rej_orders(
         from_everywhere, order_req_data, db
     )
+    # + BG record +
+    source_id = await get_object_id(order_req_data['placementId'])
+    source_type = order_req_data['placementType']
+    destination_id = await get_object_id(order_req_data['destination']['placementId'])
+    destination_type = order_req_data['destination']['placementType']
+    if source_id == destination_id:
+        background_tasks.add_task(background_history_record, source_id, source_type, db)
+    else:
+        background_tasks.add_task(background_history_record, source_id, source_type, db)
+        background_tasks.add_task(background_history_record, destination_id, destination_type, db)
+    # - BG record -
     return JSONResponse(
         content={
             'createdOrders': [str(orderId) for orderId in created_orders],
@@ -260,6 +307,7 @@ async def route_post_create_bulk_orders_move_to_pro_rej(
     name='New Order',
 )
 async def route_post_create_order_move_to_rejected(
+        background_tasks: BackgroundTasks,
         order_data: CreateProcessingOrderRequest = Body(...,
                                                         description='all required data for a new processing `order`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
@@ -268,6 +316,17 @@ async def route_post_create_order_move_to_rejected(
     data = order_data.model_dump()
     logger.info(f'Creating order of type = {ORDER_MOVE_TO_REJECTED}')
     created_order_id = await orders_create_move_to_rejected(db, data)
+    # + BG record +
+    source_id = await get_object_id(data['source']['placementId'])
+    source_type = data['source']['placementType']
+    destination_id = await get_object_id(data['destination']['placementId'])
+    destination_type = data['destination']['placementType']
+    if source_id == destination_id:
+        background_tasks.add_task(background_history_record, source_id, source_type, db)
+    else:
+        background_tasks.add_task(background_history_record, source_id, source_type, db)
+        background_tasks.add_task(background_history_record, destination_id, destination_type, db)
+    # - BG record -
     return JSONResponse(
         content={
             '_id': str(created_order_id),
@@ -282,12 +341,24 @@ async def route_post_create_order_move_to_rejected(
     name='New Order',
 )
 async def route_post_create_order_move_to_storage(
+        background_tasks: BackgroundTasks,
         order_data: CreateMoveToStorageRequest,
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
         token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     data = order_data.model_dump()
     created_order_id = await orders_create_move_to_storage(db, data)
+    # + BG record +
+    source_id = await get_object_id(data['source']['placementId'])
+    source_type = data['source']['placementType']
+    destination_id = await get_object_id(data['storage'])
+    destination_type = PS_STORAGE
+    if source_id == destination_id:
+        background_tasks.add_task(background_history_record, source_id, source_type, db)
+    else:
+        background_tasks.add_task(background_history_record, source_id, source_type, db)
+        background_tasks.add_task(background_history_record, destination_id, destination_type, db)
+    # - BG record -
     return JSONResponse(
         content={
             'createdOrder': str(created_order_id),
@@ -302,6 +373,7 @@ async def route_post_create_order_move_to_storage(
     name='New Order',
 )
 async def route_post_create_order_move_from_storage(
+        background_tasks: BackgroundTasks,
         order_data: CreateMoveFromStorageRequest = Body(...),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
         token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
@@ -318,6 +390,17 @@ async def route_post_create_order_move_from_storage(
         created_order_id = await orders_create_move_from_storage_to_storage_whole_stack(db, data)
     elif ORDER_MOVE_TO_LABORATORY == data['orderType']:
         created_order_id = await orders_create_move_from_storage_to_lab(db, data)
+    # + BG record +
+    source_id = await get_object_id(data['source']['storageId'])
+    source_type = PS_STORAGE
+    destination_id = await get_object_id(data['destination']['placementId'])
+    destination_type = data['destination']['placementType']
+    if source_id == destination_id:
+        background_tasks.add_task(background_history_record, source_id, source_type, db)
+    else:
+        background_tasks.add_task(background_history_record, source_id, source_type, db)
+        background_tasks.add_task(background_history_record, destination_id, destination_type, db)
+    # - BG record -
     return JSONResponse(
         content={
             'createdId': str(created_order_id)
@@ -332,6 +415,7 @@ async def route_post_create_order_move_from_storage(
     name='Cancel Order',
 )
 async def route_post_cancel_order(
+        background_tasks: BackgroundTasks,
         order_object_id: str = Path(...,
                                     description='`objectId` of the order to cancel'),
         cancellation_reason: str = Query('',
@@ -368,6 +452,17 @@ async def route_post_cancel_order(
                 order_data, cancellation_reason, db
             )
     logger.info(f'Order canceled and moved to `canceledOrders` with `_id` = {result}')
+    # + BG record +
+    source_id = order_data['source']['placementId']
+    source_type = order_data['source']['placementType']
+    destination_id = order_data['destination']['placementId']
+    destination_type = order_data['destination']['placementType']
+    if source_id == destination_id:
+        background_tasks.add_task(background_history_record, source_id, source_type, db)
+    else:
+        background_tasks.add_task(background_history_record, source_id, source_type, db)
+        background_tasks.add_task(background_history_record, destination_id, destination_type, db)
+    # - BG record -
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -377,6 +472,7 @@ async def route_post_cancel_order(
     name='Complete Order',
 )
 async def route_post_complete_order(
+        background_tasks: BackgroundTasks,
         order_object_id: str = Path(...,
                                     description='`objectId` of the order to complete'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
@@ -389,7 +485,7 @@ async def route_post_complete_order(
             detail=f'Order with `objectId` = {order_id}. Not Found.',
             status_code=status.HTTP_404_NOT_FOUND,
         )
-    log_record: str = f'Order completed and moved to `completedOrders` with `_id` = '
+    log_record: str = f'Order completed and moved to `completedOrders` with `_id` => '
     result: str | ObjectId = ''
     if order_data['orderType'] == ORDER_MOVE_WHOLE_STACK:
         if PS_STORAGE == order_data['source']['placementType']:
@@ -418,4 +514,15 @@ async def route_post_complete_order(
         else:
             result = await orders_complete_move_to_storage(order_data, db)
     logger.info(log_record + str(result))
+    # + BG record +
+    source_id = order_data['source']['placementId']
+    source_type = order_data['source']['placementType']
+    destination_id = order_data['destination']['placementId']
+    destination_type = order_data['destination']['placementType']
+    if source_id == destination_id:
+        background_tasks.add_task(background_history_record, source_id, source_type, db)
+    else:
+        background_tasks.add_task(background_history_record, source_id, source_type, db)
+        background_tasks.add_task(background_history_record, destination_id, destination_type, db)
+    # - BG record -
     return Response(status_code=status.HTTP_204_NO_CONTENT)

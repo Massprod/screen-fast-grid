@@ -4,10 +4,11 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi.responses import JSONResponse, Response
 from utility.utilities import get_object_id, time_w_timezone
 from auth.jwt_validation import get_role_verification_dependency
-from fastapi import APIRouter, Depends, HTTPException, status, Path, Body
+from routers.history.history_actions import background_history_record
 from routers.wheels.crud import db_find_wheel_by_object_id, db_update_wheel
 from .models.models import CreateWheelStackRequest, ForceUpdateWheelStackRequest
 from routers.batch_numbers.crud import db_find_batch_number, db_create_batch_number
+from fastapi import APIRouter, Depends, HTTPException, status, Path, Body, BackgroundTasks
 from routers.base_platform.crud import cell_exist, place_wheelstack_in_platform, get_platform_by_object_id
 from constants import (
     DB_PMK_NAME,
@@ -44,6 +45,7 @@ router = APIRouter()
     name='Create Wheelstack'
 )
 async def route_create_wheelstack(
+        background_tasks: BackgroundTasks,
         wheelstack: CreateWheelStackRequest = Body(
             ...,
             description="Every parameter of the `wheelStack` is mandatory,"
@@ -171,6 +173,11 @@ async def route_create_wheelstack(
                 }
                 await db_update_wheel(wheel_id, record, db, DB_PMK_NAME, CLN_WHEELS)
             # Marking Wheels ---
+            # + BG record +
+            placement_id = correct_data['placement']['placementId']
+            placement_type = correct_data['placement']['type']
+            background_tasks.add_task(background_history_record, placement_id, placement_type, db)
+            # - BG record -
             return JSONResponse(
                 content={
                     '_id': str(created_id)
@@ -216,6 +223,7 @@ async def route_find_wheelstack(
     name='Force Update',
 )
 async def route_force_update_wheelstack(
+        background_tasks: BackgroundTasks,
         wheelstack_new_data: ForceUpdateWheelStackRequest,
         wheelstack_object_id: str = Path(description='`objectId` of stored wheelstack'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
@@ -252,6 +260,23 @@ async def route_force_update_wheelstack(
     result = await db_update_wheelstack(force_data, wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS)
     if 0 == result.modified_count:
         return Response(status_code=status.HTTP_304_NOT_MODIFIED)
+    # + BG record +
+    previous_placement_id = wheelstack_exist['placement']['placementId']
+    previous_placement_type = wheelstack_exist['placement']['type']
+    new_placement_id = force_data['placement']['placementId']
+    new_placement_type = force_data['placement']['type']
+    if new_placement_id == previous_placement_id:
+        background_tasks.add_task(
+            background_history_record, new_placement_id, new_placement_type, db
+        )
+    else:
+        background_tasks.add_task(
+            background_history_record, new_placement_id, new_placement_type, db
+        )
+        background_tasks.add_task(
+            background_history_record, previous_placement_id, previous_placement_type, db
+        )
+    # - BG record -
     return Response(status_code=status.HTTP_200_OK)
 
 
