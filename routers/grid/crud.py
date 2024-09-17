@@ -1,3 +1,5 @@
+import asyncio
+
 from bson import ObjectId
 from loguru import logger
 from fastapi import status
@@ -382,15 +384,22 @@ async def db_update_grid_cell_data(
     }
     if record_change:
         update['$set']['lastChange'] = await time_w_timezone()
-    try:
-        result = await collection.update_one(query, update, session=session)
-        return result
-    except PyMongoError as error:
-        logger.error(f'Error while updating `cell_data` in {db_collection}: {error}')
-        raise HTTPException(
-            detail=f'Error while updating `cell_data`',
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            result = await collection.update_one(query, update, session=session)
+            return result
+        except PyMongoError as error:
+            if error.has_error_label('TransientTransactionError'):
+                logger.warning(f'`TransientTransactionError`: {error}. Attempt {attempt} of {max_retries}')
+            if attempt < max_retries - 1:
+                await asyncio.sleep(1)
+            else:
+                logger.error(f'Error while updating `cell_data` in {db_collection}: {error}')
+                raise HTTPException(
+                    detail=f'Error while updating `cell_data`',
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
 
 
 async def db_get_grid_extra_cell_data(
