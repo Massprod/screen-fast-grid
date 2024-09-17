@@ -4,10 +4,16 @@ from datetime import datetime
 from fastapi import HTTPException, status
 from utility.utilities import time_w_timezone
 from motor.motor_asyncio import AsyncIOMotorClient
-from constants import PLACEMENT_COLLECTIONS, DB_PMK_NAME, CLN_WHEELSTACKS, CLN_ACTIVE_ORDERS
-from routers.history.crud import db_history_get_placement_data
-from routers.wheelstacks.crud import db_history_get_placement_wheelstacks
 from routers.orders.crud import db_history_get_orders_by_placement
+from routers.wheelstacks.crud import db_history_get_placement_wheelstacks
+from routers.history.crud import db_history_get_placement_data, db_history_create_record
+from constants import (
+    PLACEMENT_COLLECTIONS,
+    DB_PMK_NAME,
+    CLN_WHEELSTACKS,
+    CLN_ACTIVE_ORDERS,
+    CLN_PLACEMENT_HISTORY,
+)
 
 
 async def gather_placement_history_data(
@@ -41,3 +47,24 @@ async def gather_placement_history_data(
         'placementOrders': orders_data,
     }
     return history_record_data
+
+
+async def background_history_record(
+        placement_id: ObjectId,
+        placement_type: str,
+        db: AsyncIOMotorClient,
+) -> None:
+    logger.info(
+        f'Started backgroundTask of creating a history record for `placement` => {placement_id}'
+        f' of type {placement_type}'
+    )
+    placement_data = await gather_placement_history_data(
+        placement_id, placement_type, db
+    )
+    history_record = await db_history_create_record(
+        placement_data, db, DB_PMK_NAME, CLN_PLACEMENT_HISTORY
+    )
+    logger.info(
+        f'End of creating a history record for `placement`  => {placement_id}'
+        f' of type {placement_type} | History record `ObjectId` => {history_record.inserted_id}'
+    )
