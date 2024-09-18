@@ -64,6 +64,7 @@ from constants import (
     ORDER_MOVE_TO_STORAGE,
     PS_STORAGE,
     BASIC_PAGE_VIEW_ROLES,
+    BASIC_PAGE_ACTION_ROLES,
 )
 
 
@@ -170,7 +171,7 @@ async def route_post_create_order_move(
         order_data: CreateMoveOrderRequest = Body(...,
                                                   description='all required data for a new `order`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_ACTION_ROLES),
 ):
     created_order_id: ObjectId | None = None
     data = order_data.model_dump()
@@ -206,7 +207,7 @@ async def route_post_create_order_move_to_lab(
         order_data: CreateLabOrderRequest = Body(...,
                                                  description='all required data for a new lab `order`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_ACTION_ROLES),
 ):
     data = order_data.model_dump()
     logger.info(f'Creating order of type = `{ORDER_MOVE_TO_LABORATORY}`')
@@ -240,7 +241,7 @@ async def route_post_create_order_move_to_processing(
         order_data: CreateProcessingOrderRequest = Body(...,
                                                         description='all required data for a new processing `order`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_ACTION_ROLES),
 ):
     data = order_data.model_dump()
     logger.info(f'Request to create order of type = {ORDER_MOVE_TO_PROCESSING}')
@@ -276,7 +277,7 @@ async def route_post_create_bulk_orders_move_to_pro_rej(
         from_everywhere: bool = Query(False,
                                       description='Gather `wheelstack`s from `everywhere`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_ACTION_ROLES),
 ):
     order_req_data = order_data.model_dump()
     created_orders = await orders_create_bulk_move_to_pro_rej_orders(
@@ -311,7 +312,7 @@ async def route_post_create_order_move_to_rejected(
         order_data: CreateProcessingOrderRequest = Body(...,
                                                         description='all required data for a new processing `order`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_ACTION_ROLES),
 ):
     data = order_data.model_dump()
     logger.info(f'Creating order of type = {ORDER_MOVE_TO_REJECTED}')
@@ -344,7 +345,7 @@ async def route_post_create_order_move_to_storage(
         background_tasks: BackgroundTasks,
         order_data: CreateMoveToStorageRequest,
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_ACTION_ROLES),
 ):
     data = order_data.model_dump()
     created_order_id = await orders_create_move_to_storage(db, data)
@@ -376,7 +377,7 @@ async def route_post_create_order_move_from_storage(
         background_tasks: BackgroundTasks,
         order_data: CreateMoveFromStorageRequest = Body(...),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_ACTION_ROLES),
 ):
     data = order_data.model_dump()
     created_order_id: ObjectId | None = None
@@ -421,7 +422,7 @@ async def route_post_cancel_order(
         cancellation_reason: str = Query('',
                                          description='reason of cancellation'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_ACTION_ROLES),
 ):
     order_id: ObjectId = await get_object_id(order_object_id)
     order_data = await db_find_order_by_object_id(order_id, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS)
@@ -476,7 +477,7 @@ async def route_post_complete_order(
         order_object_id: str = Path(...,
                                     description='`objectId` of the order to complete'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_ACTION_ROLES),
 ):
     order_id: ObjectId = await get_object_id(order_object_id)
     order_data = await db_find_order_by_object_id(order_id, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS)

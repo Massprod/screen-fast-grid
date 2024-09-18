@@ -19,6 +19,7 @@ from constants import (
     CLN_BATCH_NUMBERS,
     BASIC_PAGE_VIEW_ROLES,
     ADMIN_ACCESS_ROLES,
+    BASIC_PAGE_ACTION_ROLES,
 )
 from .models.response_models import (
     update_response_examples,
@@ -144,7 +145,7 @@ async def route_force_update_wheel(
             }
         ),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        token_data: dict = get_role_verification_dependency(ADMIN_ACCESS_ROLES),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_ACTION_ROLES),
 ):
     wheel_id = await get_object_id(wheel_object_id)
     wheel_data = wheel.model_dump()
@@ -189,7 +190,7 @@ async def route_create_wheel(
             }
         ),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_ACTION_ROLES),
 ):
     # TODO: We need to extra check wheel Diameters when we creating and placing wheel in a stack.
     #  Because STACK can only contain same sized wheels.
@@ -298,7 +299,7 @@ async def route_create_wheel(
 async def route_delete_wheel(
         wheel_object_id: str = Path(description='`objectId` of the wheel to delete'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_ACTION_ROLES),
 ):
     wheel_id: ObjectId = await get_object_id(wheel_object_id)
     result = await db_delete_wheel(wheel_id, db, DB_PMK_NAME, CLN_WHEELS)
