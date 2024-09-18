@@ -376,7 +376,7 @@ async def route_get_change_time(
         grid_object_id: str = Path(...,
                                    description='`objectId` of the `grid` to search'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        token_data: dict = get_role_verification_dependency(ADMIN_ACCESS_ROLES),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     grid_id: ObjectId = await get_object_id(grid_object_id)
     res = await db_get_grid_last_change_time(grid_id, db, DB_PMK_NAME, CLN_GRID)
