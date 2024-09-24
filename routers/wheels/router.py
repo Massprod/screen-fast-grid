@@ -261,7 +261,6 @@ async def route_create_wheel(
                 batch_number_exist = await db_find_batch_number(
                     cor_data['batchNumber'], db, DB_PMK_NAME, CLN_BATCH_NUMBERS, session
                 )
-                logger.error(f'found existing batch {batch_number_exist}')
                 if batch_number_exist is None:
                     new_batch_number_data: dict = {
                         'batchNumber': cor_data['batchNumber'],
