@@ -20,9 +20,9 @@
       "description": "All related placement data"
     },
     "wheelstacksData": {
-      "bsonType": "array",
-      "description": "array with all wheelstacks present in the placement at the time of record",
-      "items": {
+      "bsonType": "object",
+      "description": "object with all wheelstacks present in the placement at the time of record",
+      "additionalProperties": {
         "bsonType": "object",
         "required": [
           "originalPisId",
@@ -115,9 +115,9 @@
       }
     },
     "placementOrders": {
-      "bsonType": "array",
-      "description": "Array with all `activeOrder` at the time of recording",
-      "items": {
+      "bsonType": "object",
+      "description": "object with all `activeOrder` at the time of recording",
+      "additionalProperties": {
         "bsonType": "object",
         "required": ["createdAt", "orderName", "affectedWheelStacks", "affectedWheels",
           "orderDescription", "source", "destination", "orderType", "status", "lastUpdated"],
@@ -234,6 +234,12 @@
           }
         }
       }
+    },
+    "wheelsData": {
+      "bsonType": "object"
+    },
+    "batchesData": {
+      "bsonType": "object"
     }
   },
   "indexes": [
