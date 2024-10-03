@@ -1,0 +1,54 @@
+
+services:
+  # RUN 2 scripts manually(for now):
+  #  - create_api_user.sh
+  #  - replica_init.sh
+  # Check docker-file.
+  mongo-grid-api-db:
+    container_name: ${MONGO_CONTAINER_NAME}
+    build:
+      context: ./docker_mongo_db
+      dockerfile: DockerMongo
+    ports:
+      - ${MONGO_SERVER_OUTSIDE_PORT}:${MONGO_SERVER_INSIDE_PORT}
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ADMIN_LOGIN}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ADMIN_PWD}
+      - MONGO_SERVER_NAME=${MONGO_CONTAINER_NAME}
+      - MONGO_REPLICA_NAME=${MONGO_REPLICA_NAME}
+      - API_MONGO_LOGIN=${API_MONGO_LOGIN}
+      - API_MONGO_PWD=${API_MONGO_PWD}
+      - API_MONGO_DB_NAME=${API_MONGO_DB_NAME}
+    volumes:
+      - mongo_grid_api:/data/db
+    networks:
+      - grid-api-bridge
+    restart: always
+  
+  grid-api-app:
+    container_name: ${API_CONTAINER_NAME}
+    build:
+      context: .
+      dockerfile: app_docker_file
+    ports:
+      - ${API_OUTSIDE_PORT}:${API_INSIDE_PORT}
+    depends_on:
+      - mongo-grid-api-db
+    volumes:
+      - grid_api_logs:/app/logs
+    networks:
+      - grid-api-bridge
+      - cross-connect-bridge
+    restart: always
+
+volumes:
+  mongo_grid_api:
+  grid_api_logs:
+
+networks:
+  grid-api-bridge:
+    name: grid-api
+    driver: bridge
+  cross-connect-bridge:
+    name: cross-connect
+    driver: bridge

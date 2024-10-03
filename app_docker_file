@@ -1,0 +1,17 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+
+RUN  pip install --no-cache-dir -r requirements.txt
+
+COPY auth ./auth
+COPY database ./database
+COPY routers ./routers
+COPY utility ./utility
+COPY .env .
+COPY app.py .
+COPY constants.py .
+
+CMD ["uvicorn", "app:app", "--workers", "4", "--host", "0.0.0.0", "--port", "8000"]
