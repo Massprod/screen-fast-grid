@@ -110,16 +110,18 @@ async def prepare_db():
         pmk_grid_preset = await create_pmk_grid_preset()
         logger.info(f'Completed creation of data for `presetName` = {PRES_PMK_GRID}')
         await add_new_preset(pmk_grid_preset, db, DB_PMK_NAME, CLN_PRESETS)
+        grid_preset = await get_preset_by_name(PRES_PMK_GRID, db, DB_PMK_NAME, CLN_PRESETS)
     platform_preset = await get_preset_by_name(PRES_PMK_PLATFORM, db, DB_PMK_NAME, CLN_PRESETS)
     if platform_preset is None:
         logger.info(f"Creating preset data, for `presetName` =  {PRES_PMK_PLATFORM}")
         pmk_platform_preset = await create_pmk_platform_preset()
         logger.info(f"Completed creation of data for `presetName` = {PRES_PMK_PLATFORM}")
         await add_new_preset(pmk_platform_preset, db, DB_PMK_NAME, CLN_PRESETS)
+        platform_preset = await get_preset_by_name(PRES_PMK_PLATFORM, db, DB_PMK_NAME, CLN_PRESETS)
     # --- PRESETS
     # TODO: think about changing it!
     # BAD SOLUTION == creating basic `grid` & `basePlatform` for PMK.
-    create_pmk_preset = os.getenv('CREATE_PMK_PRESETS', '')
+    create_pmk_preset = os.getenv('CREATE_PMK_PRESETS', 'False').lower() == 'true'
     if create_pmk_preset:
         # + basePlatform +
         pmk_platform_name = os.getenv('PMK_PLATFORM_NAME', 'pmkBase1')
