@@ -18,6 +18,7 @@ from constants import (
     CLN_WHEELSTACKS,
     BASIC_PAGE_VIEW_ROLES,
     ADMIN_ACCESS_ROLES,
+    CELERY_ACTION_ROLES,
 )
 from routers.base_platform.crud import (
     platform_make_json_friendly,
@@ -110,7 +111,7 @@ async def route_get_platform_by_name(
         name: str = Path(...,
                          description='`name` of stored `basePlatform`'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES | CELERY_ACTION_ROLES),
 ):
     exist = await get_platform_by_name(name, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
     if exist is None:

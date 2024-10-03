@@ -422,7 +422,7 @@ async def route_post_cancel_order(
         cancellation_reason: str = Query('',
                                          description='reason of cancellation'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        token_data: dict = get_role_verification_dependency(BASIC_PAGE_ACTION_ROLES),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     order_id: ObjectId = await get_object_id(order_object_id)
     order_data = await db_find_order_by_object_id(order_id, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS)
@@ -477,7 +477,7 @@ async def route_post_complete_order(
         order_object_id: str = Path(...,
                                     description='`objectId` of the order to complete'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        token_data: dict = get_role_verification_dependency(BASIC_PAGE_ACTION_ROLES),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     order_id: ObjectId = await get_object_id(order_object_id)
     order_data = await db_find_order_by_object_id(order_id, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS)
