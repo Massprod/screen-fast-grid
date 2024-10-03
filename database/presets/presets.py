@@ -79,7 +79,7 @@ async def create_pmk_platform_preset() -> dict:
         'presetType': PRES_TYPE_PLATFORM,
         'createdAt': await time_w_timezone(),
     }
-    row_identifiers: list[str] = ['0', 'A', 'B']
+    row_identifiers: list[str] = ['0', '1', '2']
     base_platform = []
     zero_row = [GridObject(whitespace=True)]
     zero_row += [GridObject(identifier=True, identifier_string=str(col)) for col in range(1, 5)]
