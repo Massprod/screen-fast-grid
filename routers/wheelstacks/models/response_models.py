@@ -38,9 +38,6 @@ class WheelsStackStandardResponse(BaseModel):
     def set_duplicate_message(self, wheelstack_object_id: str):
         self.message = f'Wheelstack with ID: {wheelstack_object_id} already exist in DB.'
 
-    def set_pis_duplicate_message(self, original_pis_id: str):
-        self.message = f'Wheelstack with pisId: {original_pis_id} already exist in DB.'
-
     def set_update_message(self, wheelstack_object_id: str):
         self.message = f'Wheelstack with ID: {wheelstack_object_id} has been updated successfully.'
 

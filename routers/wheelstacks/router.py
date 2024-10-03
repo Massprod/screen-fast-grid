@@ -18,6 +18,7 @@ from constants import (
     CLN_BATCH_NUMBERS,
     BASIC_PAGE_VIEW_ROLES,
     ADMIN_ACCESS_ROLES,
+    CELERY_ACTION_ROLES,
 )
 from .crud import (
     db_find_all_wheelstacks,
@@ -27,7 +28,6 @@ from .crud import (
     all_make_json_friendly,
     db_update_wheelstack,
     db_find_wheelstack_by_object_id,
-    db_find_wheelstack_by_pis,
     db_get_wheelstack_last_change,
 )
 
@@ -52,7 +52,7 @@ async def route_create_wheelstack(
                         " except the `lastChange`. Because this `wheelStack` might be never changed.",
         ),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES | CELERY_ACTION_ROLES),
 ):
     wheelstack_data = wheelstack.model_dump()
     # +++ Placement exist
@@ -64,17 +64,6 @@ async def route_create_wheelstack(
             status_code=status.HTTP_404_NOT_FOUND,
         )
     # Placement exist ---
-    original_pis_id = wheelstack_data['originalPisId']
-    # +++ Duplicate
-    duplicate = await db_find_wheelstack_by_pis(original_pis_id, db, DB_PMK_NAME, CLN_WHEELSTACKS)
-    if duplicate is not None:
-        return JSONResponse(
-            content={
-                'duplicate': f'`wheelStack` with `originalPisId` = {original_pis_id}. Already exist.'
-            },
-            status_code=status.HTTP_302_FOUND
-        )
-    # Duplicate ---
     # +++ Wheels:
     # Checking for a correct `objectId` type and `wheel` should already exist,
     #   and it shouldn't be yet assigned.
@@ -144,7 +133,6 @@ async def route_create_wheelstack(
                 )
             creation_time = await time_w_timezone()
             correct_data = {
-                'originalPisId': wheelstack_data['originalPisId'],
                 'batchNumber': wheelstack_data['batchNumber'],
                 'placement': {
                     'type': wheelstack_data['placementType'],
@@ -243,7 +231,6 @@ async def route_force_update_wheelstack(
     for wheel in new_data['wheels']:
         cor_wheels.append(await get_object_id(wheel))
     force_data = {
-        'originalPisId': new_data['originalPisId'],
         'batchNumber': new_data['batchNumber'],
         'placement': {
             'type': new_data['placementType'],

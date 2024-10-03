@@ -25,7 +25,6 @@
       "additionalProperties": {
         "bsonType": "object",
         "required": [
-          "originalPisId",
           "batchNumber",
           "placement",
           "rowPlacement",
@@ -42,10 +41,6 @@
           "_id": {
             "bsonType": "objectId",
             "description": "must be an objectId and is required"
-          },
-          "originalPisId": {
-            "bsonType": "string",
-            "description": "original id of the wheelstack we got from PIS db"
           },
           "batchNumber": {
             "bsonType": "string",

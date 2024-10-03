@@ -1,7 +1,6 @@
 {
   "bsonType": "object",
   "required": [
-    "originalPisId",
     "batchNumber",
     "placement",
     "rowPlacement",
@@ -18,10 +17,6 @@
     "_id": {
       "bsonType": "objectId",
       "description": "must be an objectId and is required"
-    },
-    "originalPisId": {
-      "bsonType": "string",
-      "description": "original id of the wheelstack we got from PIS db"
     },
     "batchNumber": {
       "bsonType": "string",
@@ -98,7 +93,6 @@
     { "keys": { "blocked": 1 }, "options": { "name": "blocked_index" } },
     { "keys": { "wheels": 1 }, "options": { "name": "wheels_index" } },
     { "keys": { "status": 1 }, "options": { "name": "status_index" } },
-    { "keys": { "originalPisId" :  1 }, "options":  { "name": "originalPisId" } },
     { "keys": { "batchNumber": 1 }, "options": { "name": "Query by `batchNumber`" } },
     { "keys": { "placement.placementId": 1, "placement.type":  1}, "options":  { "name": "Query by placement data" }}
   ]

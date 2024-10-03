@@ -114,21 +114,6 @@ async def db_find_wheelstack_by_object_id(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database search error")
 
 
-async def db_find_wheelstack_by_pis(
-        original_pis_id: str,
-        db: AsyncIOMotorClient,
-        db_name: str,
-        db_collection: str,
-):
-    try:
-        wheelstack_collection = await get_db_collection(db, db_name, db_collection)
-        res = await wheelstack_collection.find_one({'originalPisId': original_pis_id})
-        return res
-    except PyMongoError as e:
-        logger.error(f"Error searching a `wheelStack`: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database search error")
-
-
 async def db_insert_wheelstack(
         wheelstack_data: dict,
         db: AsyncIOMotorClient,

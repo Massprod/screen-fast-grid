@@ -32,8 +32,6 @@ class AllowedPlacement(str, Enum):
 
 
 class CreateWheelStackRequest(BaseModel):
-    originalPisId: str = Field(...,
-                               description='Original ID created by PIS, before its given to our service.')
     batchNumber: str = Field(...,
                              description="batch number of the WheelStack, we can't have wheels with different "
                                          "batch_numbers inside the one Wheelstack")
@@ -106,7 +104,6 @@ class CreateWheelStackRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "originalPisId": "PIS12345",
                 "batchNumber": "batch12345",
                 "placementType": PRES_TYPE_PLATFORM,
                 "placementId": '',
@@ -125,8 +122,6 @@ class CreateWheelStackRequest(BaseModel):
 
 
 class ForceUpdateWheelStackRequest(BaseModel):
-    originalPisId: str = Field(...,
-                               description='original id from `pis` system')
     batchNumber: str = Field(...,
                              description='`batchNumber` of the wheels inside')
     placementType: AllowedPlacement = Field(None,
@@ -177,7 +172,6 @@ class ForceUpdateWheelStackRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "originalPisId": "no_limit",
                 "batchNumber": "no_limit",
                 "placementType": "grid",
                 "placementId": '6699f225c41ba1feabc771c2',
