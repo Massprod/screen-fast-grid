@@ -1,15 +1,19 @@
 FROM mongo:latest
 
+RUN apt-get update && apt-get install -y dos2unix
+
 COPY mongod.conf /etc/mongod.conf
 COPY mongo-key.txt /etc/mongo-key.txt
 
 # + Replicat init == run it manually +
 COPY replica_init.sh /usr/local/bin/replica_init.sh
 RUN chmod +x /usr/local/bin/replica_init.sh
+RUN dos2unix /usr/local/bin/replica_init.sh
 # - Replicat init == run it manually -
 # + User init == run it manually +
 COPY create_api_user.sh /usr/local/bin/create_api_user.sh
 RUN chmod +x /usr/local/bin/create_api_user.sh
+RUN dos2unix /usr/local/bin/create_api_user.sh
 # - User init == run it manually -
 
 # Open directory access for MongoDB user
