@@ -1,24 +1,26 @@
-from loguru import logger
+import os
 from uuid import uuid4
-from fastapi import FastAPI, Request
+from loguru import logger
 from dotenv import load_dotenv
+from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
-from fastapi.middleware.cors import CORSMiddleware
 from database.mongo_connection import mongo_client
+from fastapi.middleware.cors import CORSMiddleware
+from routers.base_platform.crud import get_platform_by_name, create_platform
+from routers.grid.crud import collect_wheelstack_cells, get_grid_by_name, create_grid
 from routers.grid.router import router as grid_router
 from routers.wheels.router import router as wheel_router
 from routers.orders.router import router as orders_router
-from routers.storages.router import router as storages_router
+from routers.history.router import router as history_router
 from routers.presets.router import router as presets_router
+from routers.storages.router import router as storages_router
 from routers.base_platform.router import router as platform_router
 from routers.wheelstacks.router import router as wheelstack_router
 from routers.presets.crud import add_new_preset, get_preset_by_name
-from routers.batch_numbers.router import router as batch_numbers_router
-from routers.history.router import router as history_router
 from database.collections.collections import create_basic_collections
-from constants import PRES_PMK_GRID, PRES_PMK_PLATFORM, DB_PMK_NAME, CLN_PRESETS
+from routers.batch_numbers.router import router as batch_numbers_router
 from database.presets.presets import create_pmk_grid_preset, create_pmk_platform_preset
-
+from constants import PRES_PMK_GRID, PRES_PMK_PLATFORM, DB_PMK_NAME, CLN_PRESETS, CLN_BASE_PLATFORM, CLN_GRID
 
 # TODO: We need to change records CREATION for some cases.
 #  Because, if we're getting multiple requests when we
@@ -28,8 +30,11 @@ from database.presets.presets import create_pmk_grid_preset, create_pmk_platform
 load_dotenv('.env')
 
 
+log_dir = 'logs/'
+os.makedirs(log_dir, exist_ok=True)
+
 logger.add(
-    f'logs/logs.log',
+    os.path.join(log_dir, 'log.log'),
     rotation='50 MB',
     retention='14 days',
     compression='zip',
@@ -99,19 +104,69 @@ async def prepare_db():
     logger.info('Ended creation of basic DB collections')
     # --- SCHEMAS
     # PRESETS +++ (Creating all basic presets)
-    exist = await get_preset_by_name(PRES_PMK_GRID, db, DB_PMK_NAME, CLN_PRESETS)
-    if exist is None:
+    grid_preset = await get_preset_by_name(PRES_PMK_GRID, db, DB_PMK_NAME, CLN_PRESETS)
+    if grid_preset is None:
         logger.info(f"Creating preset data, for `presetName` =  {PRES_PMK_GRID}")
         pmk_grid_preset = await create_pmk_grid_preset()
         logger.info(f'Completed creation of data for `presetName` = {PRES_PMK_GRID}')
         await add_new_preset(pmk_grid_preset, db, DB_PMK_NAME, CLN_PRESETS)
-    exist = await get_preset_by_name(PRES_PMK_PLATFORM, db, DB_PMK_NAME, CLN_PRESETS)
-    if exist is None:
+    platform_preset = await get_preset_by_name(PRES_PMK_PLATFORM, db, DB_PMK_NAME, CLN_PRESETS)
+    if platform_preset is None:
         logger.info(f"Creating preset data, for `presetName` =  {PRES_PMK_PLATFORM}")
         pmk_platform_preset = await create_pmk_platform_preset()
         logger.info(f"Completed creation of data for `presetName` = {PRES_PMK_PLATFORM}")
         await add_new_preset(pmk_platform_preset, db, DB_PMK_NAME, CLN_PRESETS)
     # --- PRESETS
+    # TODO: think about changing it!
+    # BAD SOLUTION == creating basic `grid` & `basePlatform` for PMK.
+    create_pmk_preset = os.getenv('CREATE_PMK_PRESETS', '')
+    if create_pmk_preset:
+        # + basePlatform +
+        pmk_platform_name = os.getenv('PMK_PLATFORM_NAME', 'pmkBase1')
+        platform_exists = await get_platform_by_name(
+            pmk_platform_name, db, DB_PMK_NAME, CLN_BASE_PLATFORM
+        )
+        if not platform_exists:
+            logger.info(
+                f'Creating basic `basePlatform` placement => {pmk_platform_name}'
+            )
+            cor_platform_data = await collect_wheelstack_cells(platform_preset)
+            cor_platform_data['name'] = pmk_platform_name
+            res = await create_platform(
+                cor_platform_data, db, DB_PMK_NAME, CLN_BASE_PLATFORM
+            )
+            if not res:
+                logger.error(
+                    f'Failed to create basic `basePlatform` placement => {pmk_platform_name}'
+                )
+            else:
+                logger.info(
+                    f'Created basic `basePlatform` placement => {pmk_platform_name}'
+                )
+        # - basePlatform -
+        # + grid +
+        pmk_grid_name = os.getenv('PMK_GRID_NAME', 'pmkGrid1')
+        grid_exists = await get_grid_by_name(
+            pmk_grid_name, db, DB_PMK_NAME, CLN_GRID
+        )
+        if not grid_exists:
+            logger.info(
+                f'Creating basic `grid` placement => {pmk_grid_name}'
+            )
+            cor_grid_data = await collect_wheelstack_cells(grid_preset)
+            cor_grid_data['name'] = pmk_grid_name
+            res = await create_grid(
+                cor_grid_data, db, DB_PMK_NAME, CLN_GRID
+            )
+            if not res:
+                logger.error(
+                    f'Failed to create basic `grid` placement => {pmk_grid_name}'
+                )
+            else:
+                logger.info(
+                    f'Created basic `grid` placement => {pmk_grid_name}'
+                )
+        # - grid -
 
 
 @app.middleware("http")
