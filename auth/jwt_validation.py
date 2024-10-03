@@ -63,7 +63,7 @@ async def verify_multi_roles_token(
         credentials: HTTPAuthorizationCredentials = Depends(oauth_security),
 ) -> dict | None:
     token: str = credentials.credentials
-    allowed_roles: str = ' | '.join(allowed_roles)
+    allowed_roles_log: str = ' | '.join(allowed_roles)
     logger.info(
         f'Verifying access token for roles: {allowed_roles}'
     )
@@ -72,7 +72,7 @@ async def verify_multi_roles_token(
         role: str = payload.get('userRole')
         if role not in allowed_roles:
             logger.warning(
-                f'Unauthorized access attempt | Token: {token} | Role: {role} | Required Roles: {allowed_roles}'
+                f'Unauthorized access attempt | Token: {token} | Role: {role} | Required Roles: {allowed_roles_log}'
             )
             raise HTTPException(
                 detail='Invalid Token: Unauthorized role',
