@@ -8,7 +8,7 @@ def create_connection_string(
         login: str = '',
         password: str = '',
         server: str = '',
-        server_port: str = '27017',
+        server_port: str = '',
         replica_name: str = '',
         database_name: str = '',
         auth_database: str = '',
@@ -21,7 +21,7 @@ def create_connection_string(
         login (str): MongoDB login username. Defaults to an empty string.
         password (str): MongoDB login password. Defaults to an empty string.
         server (str): MongoDB server address. Defaults to an empty string.
-        server_port (str): MongoDB server port to use. Defaults to an '27017'.
+        server_port (str): MongoDB server port to use. Defaults to an empty string.
         replica_name (str): MongoDB replica name. Default to an empty string.
         database_name (str): MongoDb database name. Default to an empty string.
         auth_database (str): MongoDB database used for authentication. Default to an empty string.
@@ -103,7 +103,6 @@ class MongoDBClient:
 
 
 load_dotenv('.env')
-
 
 con_string = create_connection_string()
 mongo_client = MongoDBClient()
