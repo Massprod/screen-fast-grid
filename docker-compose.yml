@@ -19,6 +19,8 @@ services:
       - API_MONGO_LOGIN=${API_MONGO_LOGIN}
       - API_MONGO_PWD=${API_MONGO_PWD}
       - API_MONGO_DB_NAME=${API_MONGO_DB_NAME}
+      - GLIBC_TUNABLES=glibc.pthread.rseq=0
+      - SYSFSFILE_SETTING="defer+madvise"
     volumes:
       - mongo_grid_api:/data/db
     networks:

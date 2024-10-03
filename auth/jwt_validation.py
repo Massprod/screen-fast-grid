@@ -30,6 +30,10 @@ async def validate_credentials(
     logger.info(
         f'Validating access token: {token}'
     )
+    if not PUBLIC_KEY:
+        logger.error(
+            f'JWT validation cant be used without properly set `PUBLIC_KEY`'
+        )
     try:
         payload = jwt.decode(token, PUBLIC_KEY, algorithms=[ALGORITHM])
         username = payload.get('sub')

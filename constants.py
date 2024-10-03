@@ -1,6 +1,6 @@
-import os
 from os import getenv
 from pathlib import Path
+from loguru import logger
 
 
 # Placement types
@@ -88,10 +88,18 @@ WS_MAX_WHEELS: int = 6
 # WL_MAX_DIAM: int = 100_000
 
 # JWT INFO
-PUBLIC_KEY_PATH = Path('auth/public_key.pem')
-
-with open(PUBLIC_KEY_PATH, 'r') as key_file:
-    PUBLIC_KEY = key_file.read()
+PUBLIC_KEY = None
+PUBLIC_KEY_FILE_NAME = getenv('JWT_PUBLIC_KEY_NAME', 'public_key.pem')
+PUBLIC_KEY_PATH = Path(f'auth/{PUBLIC_KEY_FILE_NAME}')
+if PUBLIC_KEY_PATH.exists():
+    try:
+        with open(PUBLIC_KEY_PATH, 'r') as key_file:
+            PUBLIC_KEY = key_file.read()
+            logger.info(f"Public key successfully loaded from {PUBLIC_KEY_PATH}")
+    except Exception as e:
+        logger.error(f"Failed to read public key from {PUBLIC_KEY_PATH}: {e}")
+else:
+    logger.error(f"Public key file not found at {PUBLIC_KEY_PATH}")
 
 ALGORITHM = getenv('jwt_algorithm')
 ISSUER = getenv('jwt_issuer')
