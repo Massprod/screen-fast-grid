@@ -32,7 +32,6 @@ from .crud import (
     db_find_wheel,
     db_update_wheel,
     db_delete_wheel,
-    wheel_make_json_friendly,
     db_find_wheel_by_object_id,
     db_get_all_wheels,
     db_get_wheels_by_transfer_data,
@@ -57,7 +56,7 @@ async def route_get_all_wheels(
     result = await db_get_all_wheels(batch_number, db, DB_PMK_NAME, CLN_WHEELS)
     cor_data: dict = {}
     for wheel in result:
-        cor_data[wheel['_id']] = await wheel_make_json_friendly(wheel)
+        cor_data[str(wheel['_id'])] = convert_object_id_and_datetime_to_str(wheel)
     return JSONResponse(
         content=cor_data,
         status_code=status.HTTP_200_OK,
@@ -90,7 +89,7 @@ async def route_find_wheel(
             status_code=status.HTTP_404_NOT_FOUND,
         )
     logger.info(f"Wheel with ID: {wheel_id} found")
-    result = await wheel_make_json_friendly(result)
+    result = convert_object_id_and_datetime_to_str(result)
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
 
@@ -113,7 +112,7 @@ async def route_find_wheel_by_object_id(
             detail=f'Wheel with `objectId`: {wheel_id}. Not Found.',
             status_code=status.HTTP_404_NOT_FOUND,
         )
-    result = await wheel_make_json_friendly(result)
+    result = convert_object_id_and_datetime_to_str(result)
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
 
@@ -283,7 +282,7 @@ async def route_create_wheel(
                 await db_update_platform_last_change(
                     wheelstack_data['placement']['placementId'], db, DB_PMK_NAME, CLN_BASE_PLATFORM, session
                 )
-            cor_data = await wheel_make_json_friendly(cor_data)
+            cor_data = convert_object_id_and_datetime_to_str(cor_data)
             return JSONResponse(
                 content=cor_data,
                 status_code=status.HTTP_200_OK
