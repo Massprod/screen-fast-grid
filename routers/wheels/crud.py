@@ -1,9 +1,10 @@
 from loguru import logger
 from bson import ObjectId
+from constants import OUT_STATUSES
 from pymongo.errors import PyMongoError
 from fastapi import HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
-from utility.utilities import get_db_collection, log_db_record
+from utility.utilities import get_db_collection, log_db_record, log_db_error_record, time_w_timezone
 
 
 async def wheel_make_json_friendly(wheel_data):
@@ -179,4 +180,87 @@ async def db_get_all_wheels(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database insertion error"
+        )
+
+
+async def db_get_wheels_by_transfer_data(
+        include_data: bool,
+        transfer_status: bool,
+        correct_status: bool,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+):
+    db_info = await log_db_record(db_name, db_collection)
+    logger.info(
+        f'Attempt to gather all `wheel`s with include_data => {include_data}'
+        f' & transfer_status => {transfer_status}' + db_info
+    )
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        'transferData.transferStatus': transfer_status,
+    }
+    if correct_status:
+        query['status'] = {
+            '$in': OUT_STATUSES
+        }
+    projection = {}
+    if not include_data:
+        projection['_id'] = True
+    try:
+        result = await collection.find(query, projection).to_list(length=None)
+        logger.info(
+            f'Successfully gathered all `wheel` documents'
+            f' with include_data => {include_data} & transfer_status => {transfer_status}' + db_info
+        )
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        logger.error(
+            'Error while gathering wheels' + db_info + error_extra
+        )
+        raise HTTPException(
+            detail=f'Error while gathering `wheel` documents',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+async def db_update_wheel_transfer_status(
+        wheel_object_id: ObjectId,
+        transfer_status: bool,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+):
+    db_info = await log_db_record(db_name, db_collection)
+    logger.info(
+        f'Attempt to update `transferStatus` of the `wheel` document with `_id` => {wheel_object_id}' + db_info
+    )
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': wheel_object_id,
+        'status': {
+            '$in': OUT_STATUSES
+        },
+    }
+    update = {
+        '$set': {
+            'transferData.transferStatus': transfer_status,
+            'transferData.transferDate': await time_w_timezone()
+        }
+    }
+    try:
+        result = await collection.update_one(query, update)
+        logger.info(
+            f'Successfully updated all `wheel` document with `_id` => {wheel_object_id} ' + db_info
+        )
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        logger.error(
+            f'Error while updating `transferStatus` of the `wheel` document with `_id` => {wheel_object_id}' + db_info + error_extra
+        )
+        raise HTTPException(
+            detail=f'Error while updating `wheel` document',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

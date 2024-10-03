@@ -1,10 +1,10 @@
 {
   "bsonType": "object",
-  "required": ["wheelId", "batchNumber", "wheelDiameter", "receiptDate", "status", "wheelStack"],
+  "required": ["wheelId", "batchNumber", "receiptDate", "status", "wheelStack", "transferData"],
   "properties": {
     "_id": {
       "bsonType": "objectId",
-      "description": "must be an objectId and its required"
+      "description": "must be an objectId"
     },
     "wheelId": {
       "bsonType": "string",
@@ -14,12 +14,6 @@
       "bsonType": "string",
       "description": "must be a string and its required"
     },
-    "wheelDiameter": {
-      "bsonType": "int",
-      "description": "must be an integer and its required, diameter of the wheel in mm",
-      "minimum": 1,
-      "maximum": 100000
-    },
     "receiptDate": {
       "bsonType": "date",
       "description": "must be a date and its required"
@@ -28,6 +22,20 @@
       "bsonType": "string",
       "enum": ["laboratory", "shipped", "grid", "basePlatform", "rejected", "storage"],
       "description": "must be a string and is required"
+    },
+    "transferData": {
+      "bsonType": "object",
+      "required": ["transferStatus", "transferDate"],
+      "properties": {
+        "transferStatus": {
+          "bsonType": "bool",
+          "description": "Bool & Required. Indicates transfer status of the record"
+        },
+        "transferDate": {
+          "bsonType": ["null","date"],
+          "description": "Date & Required. Timestamp of record transfer"
+        }
+      }
     },
     "wheelStack": {
       "bsonType": ["null", "object"],
@@ -47,7 +55,8 @@
     }
   },
   "indexes": [
-    { "keys": { "wheelId": 1 }, "options": { "unique": true, "name": "wheelId_unique_index" } },
+    { "keys": { "transferData.transferDate": 1 }, "options": { "name": "transferData.transferDate indexing" } },
+    { "keys": { "wheelId": 1 }, "options": { "name": "wheelId_unique_index" } },
     { "keys": { "batchNumber": 1 }, "options": { "name": "batchNumber_index" } },
     { "keys": { "receiptDate": -1 }, "options": { "name": "receiptDate_desc_index" } },
     { "keys": { "status": 1 }, "options": { "name": "status_index" } },

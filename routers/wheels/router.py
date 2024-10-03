@@ -1,6 +1,5 @@
 from bson import ObjectId
 from loguru import logger
-from utility.utilities import get_object_id
 from .models.models import CreateWheelRequest
 from motor.motor_asyncio import AsyncIOMotorClient
 from database.mongo_connection import mongo_client
@@ -9,6 +8,7 @@ from ..base_platform.crud import db_update_platform_last_change
 from auth.jwt_validation import get_role_verification_dependency
 from ..batch_numbers.crud import db_find_batch_number, db_create_batch_number
 from fastapi import APIRouter, Depends, HTTPException, status, Path, Body, Query
+from utility.utilities import get_object_id, convert_object_id_and_datetime_to_str
 from routers.wheelstacks.crud import db_find_wheelstack_by_object_id, db_update_wheelstack
 from constants import (
     DB_PMK_NAME,
@@ -20,6 +20,8 @@ from constants import (
     BASIC_PAGE_VIEW_ROLES,
     ADMIN_ACCESS_ROLES,
     BASIC_PAGE_ACTION_ROLES,
+    CELERY_ACTION_ROLES,
+    OUT_STATUSES,
 )
 from .models.response_models import (
     update_response_examples,
@@ -32,7 +34,9 @@ from .crud import (
     db_delete_wheel,
     wheel_make_json_friendly,
     db_find_wheel_by_object_id,
-    db_get_all_wheels
+    db_get_all_wheels,
+    db_get_wheels_by_transfer_data,
+    db_update_wheel_transfer_status,
 )
 
 
@@ -42,7 +46,7 @@ router = APIRouter()
 @router.get(
     path='/all',
     name='Get All',
-    description='Return every wheel present in the `wheel`s collection',
+    description='Return every  present in the `wheel`s collection',
 )
 async def route_get_all_wheels(
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
@@ -138,7 +142,6 @@ async def route_force_update_wheel(
             example={
                 "wheelId": "W12345",
                 "batchNumber": "B54321",
-                "wheelDiameter": 650,
                 "receiptDate": "2024-05-30T11:56:16.209000+00:00",
                 "status": PS_BASE_PLATFORM,
                 "wheelStack": None
@@ -184,32 +187,34 @@ async def route_create_wheel(
             example={
                 "wheelId": "W12345",
                 "batchNumber": "B54321",
-                "wheelDiameter": 650,
                 "receiptDate": "2024-05-30T11:56:16.209000+00:00",
                 "status": PS_BASE_PLATFORM,
             }
         ),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        token_data: dict = get_role_verification_dependency(BASIC_PAGE_ACTION_ROLES),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_ACTION_ROLES | CELERY_ACTION_ROLES),
 ):
-    # TODO: We need to extra check wheel Diameters when we creating and placing wheel in a stack.
-    #  Because STACK can only contain same sized wheels.
     wheel_data = wheel.model_dump()
-    wheel_id = wheel_data['wheelId']
-    result = await db_find_wheel(wheel_id, db, DB_PMK_NAME, CLN_WHEELS)
-    if result is not None:
-        logger.warning(f"Wheel with provided `wheelId` = {wheel_id}. Already exists")
-        raise HTTPException(
-            detail=f'Wheel with `wheelId` = {wheel_id}. Already exists.',
-            status_code=status.HTTP_302_FOUND
-        )
+    # wheel_id = wheel_data['wheelId']
+    # result = await db_find_wheel(wheel_id, db, DB_PMK_NAME, CLN_WHEELS)
+    # if result is not None:
+    #     logger.warning(f"Wheel with provided `wheelId` = {wheel_id}. Already exists")
+    #     raise HTTPException(
+    #         detail=f'Wheel with `wheelId` = {wheel_id}. Already exists.',
+    #         status_code=status.HTTP_302_FOUND
+    #     )
     cor_data: dict = {
         'wheelId': wheel_data['wheelId'],
         'batchNumber': wheel_data['batchNumber'],
-        'wheelDiameter': wheel_data['wheelDiameter'],
         'receiptDate': wheel_data['receiptDate'],
         'status': wheel_data['status'],
+        'transferData': {
+            'transferStatus': False,
+            'transferDate': None,
+        }
     }
+    if 'sqlData' in wheel_data:
+        cor_data['sqlData'] = wheel_data['sqlData']
     # We only create wheel, either placed in a fresh `wheelStack` or with empty placement.
     wheelstack_data = None
     if 'wheelStack' in wheel_data and wheel_data['wheelStack'] is not None:
@@ -298,10 +303,70 @@ async def route_create_wheel(
 async def route_delete_wheel(
         wheel_object_id: str = Path(description='`objectId` of the wheel to delete'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        token_data: dict = get_role_verification_dependency(BASIC_PAGE_ACTION_ROLES),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_ACTION_ROLES | CELERY_ACTION_ROLES),
 ):
     wheel_id: ObjectId = await get_object_id(wheel_object_id)
     result = await db_delete_wheel(wheel_id, db, DB_PMK_NAME, CLN_WHEELS)
     if 0 == result.deleted_count:
         return Response(status_code=status.HTTP_404_NOT_FOUND)
+    return Response(status_code=status.HTTP_200_OK)
+
+
+@router.get(
+    path='/transfer/all',
+    name='Get All',
+    description='Get all wheels filtered by `transferStatus.'
+                'With `wheel` data included or not.',
+    status_code=status.HTTP_200_OK,
+    response_description='List with just wheels `ObjectId`s or with all of the wheels stored data',
+)
+async def route_get_transfer_data_all(
+        include_data: bool = Query(False,
+                                   description="True == include data of `wheel`s |"
+                                               " False == returns only theirs `ObjectId`"),
+        transfer_status: bool = Query(False,
+                                      description="Filter on `transferData.transferStatus`"),
+        correct_status: bool = Query(True,
+                                     description=f'We can transfer only `wheel`s already in OUT statuses.'
+                                                 f' By default set to choose only them => {OUT_STATUSES}.'
+                                                 f' Otherwise any status.'),
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(CELERY_ACTION_ROLES | BASIC_PAGE_ACTION_ROLES)
+):
+    wheel_records = await db_get_wheels_by_transfer_data(
+        include_data, transfer_status, correct_status, db, DB_PMK_NAME, CLN_WHEELS,
+    )
+    json_friendly_wheel_records = convert_object_id_and_datetime_to_str(wheel_records)
+    return JSONResponse(
+        content=json_friendly_wheel_records,
+        status_code=status.HTTP_200_OK,
+    )
+
+
+@router.patch(
+    path='/transfer/update/{wheel_object_id}',
+    name='Update Status',
+    description=f'Update `transferStatus` of a provided `ObjectId` wheel record.'
+                f'Only for `wheel`s with OUT statuses => {OUT_STATUSES}',
+    status_code=status.HTTP_200_OK,
+)
+async def route_patch_wheel_transfer_status_(
+        wheel_object_id: str = Path(...,
+                                    description='`ObjectId` of the target `wheel`'),
+        transfer_status: bool = Query(...,
+                                      description='New `transferStatus` of the target `wheel`'),
+        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        token_data: dict = get_role_verification_dependency(CELERY_ACTION_ROLES | ADMIN_ACCESS_ROLES),
+):
+    target_object_id = await get_object_id(wheel_object_id)
+    updated_record = await db_update_wheel_transfer_status(
+        target_object_id, transfer_status, db, DB_PMK_NAME, CLN_WHEELS
+    )
+    if 0 == updated_record.matched_count:
+        raise HTTPException(
+            detail=f'`wheel` with `_id` => {wheel_object_id}. Not Found.',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    if 0 == updated_record.modified_count:
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED)
     return Response(status_code=status.HTTP_200_OK)

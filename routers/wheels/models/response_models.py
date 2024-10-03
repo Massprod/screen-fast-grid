@@ -60,7 +60,6 @@ find_response_examples = {
                         "_id": "6658697150ffd9be65c4364d",
                         "wheelId": "12345",
                         "batchNumber": "54321",
-                        "wheelDiameter": 9999,
                         "receiptDate": "2024-05-30T11:56:16.209000",
                         "status": "laboratory",
                         "wheelStack": None
@@ -107,7 +106,6 @@ update_response_examples = {
                     "data": {
                         "wheelId": "12345",
                         "batchNumber": "54321",
-                        "wheelDiameter": 9999,
                         "receiptDate": "2024-05-30T11:56:16.209000",
                         "status": "updated",
                         "wheelStack": None
@@ -167,7 +165,6 @@ create_response_examples = {
                         "_id": "6658697150ffd9be65c4364d",
                         "wheelId": "W12345",
                         "batchNumber": "B54321",
-                        "wheelDiameter": 650,
                         "receiptDate": "2024-05-30T11:56:16.209000+00:00",
                         "status": "laboratory",
                         "wheelStack": {
