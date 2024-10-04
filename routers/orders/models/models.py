@@ -163,8 +163,8 @@ class CreateBulkProcessingOrderRequest(BaseModel):
                                      description='Order type process|reject')
     batchNumber: str = Field(...,
                              description='`batchNumber` to gather `wheelstack`s by')
-    placement_id: str = Field('',
-                              description='`placementId` to gather `wheelstack`s')
+    placementId: str = Field('',
+                             description='`placementId` to gather `wheelstack`s')
     placementType: BulkPlacements = Field(...,
                                           description='`placementType` to gather `wheelstack`s')
     destination: ProcessingDestination = Field(...,
@@ -193,7 +193,7 @@ class CreateMoveToStorageRequest(BaseModel):
     orderDescription: str = Field('',
                                   description='Optional description of the `order`')
     source: MoveToStorageSourceField = Field(...,
-                                         description='all the data to identify and validate `source` as correct one')
+                                             description='all the data to identify and validate `source` as correct one')
     storage: str = Field(...,
                          description='`ObjectId` of the storage to place into')
 
