@@ -61,6 +61,7 @@ app = FastAPI(
     description='Back part of the screen app',
     lifespan=lifespan,
     debug=True,
+    root_path='/api/grid',
 )
 # TODO: Change middleware after we actually complete project.
 #  we should change `origins` to the server addresses we want to allow connections.

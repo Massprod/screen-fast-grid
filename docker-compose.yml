@@ -32,8 +32,10 @@ services:
     build:
       context: .
       dockerfile: app_docker_file
-    ports:
-      - ${API_OUTSIDE_PORT}:${API_INSIDE_PORT}
+    # ports:
+    #   - ${API_OUTSIDE_PORT}:${API_INSIDE_PORT}
+    expose:
+      - ${API_INSIDE_PORT}
     depends_on:
       - mongo-grid-api-db
     volumes:
