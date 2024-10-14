@@ -1,5 +1,6 @@
 from loguru import logger
 from bson import ObjectId
+from .data_gather import grid_gather_wheelstacks
 from routers.presets.crud import get_preset_by_id
 from motor.motor_asyncio import AsyncIOMotorClient
 from database.mongo_connection import mongo_client
@@ -88,6 +89,8 @@ async def route_get_all_grids(
 )
 async def route_get_grid_by_object_id(
         grid_object_id: str = Path(..., description='`objectId` of stored `grid`'),
+        includeWheelstacks: bool = Query(False,
+                                         description='Include all of the `wheelstack`s current data'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
         token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
@@ -98,7 +101,12 @@ async def route_get_grid_by_object_id(
             detail=f'`grid` with `objectId` = {grid_object_id} not Found',
             status_code=status.HTTP_404_NOT_FOUND,
         )
-    cor_res = await grid_make_json_friendly(res)
+    if includeWheelstacks:
+        wheelstacksData = await grid_gather_wheelstacks(
+            res, db
+        )
+        res['wheelstacksData'] = wheelstacksData
+    cor_res = convert_object_id_and_datetime_to_str(res)
     return JSONResponse(content=cor_res, status_code=status.HTTP_200_OK)
 
 
@@ -111,16 +119,23 @@ async def route_get_grid_by_object_id(
 async def route_get_grid_by_name(
         name: str = Path(...,
                          description='`name` of stored `grid`'),
+        includeWheelstacks: bool = Query(False,
+                                         description='Include all of the `wheelstack`s current data'),
         db=Depends(mongo_client.depend_client),
         token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
-    exist = await get_grid_by_name(name, db, DB_PMK_NAME, CLN_GRID)
-    if exist is None:
+    res = await get_grid_by_name(name, db, DB_PMK_NAME, CLN_GRID)
+    if res is None:
         raise HTTPException(
             detail=f'`grid` with `name` = {name}. Not Found.',
             status_code=status.HTTP_404_NOT_FOUND,
         )
-    cor_res = await grid_make_json_friendly(exist)
+    if includeWheelstacks:
+        wheelstacksData = await grid_gather_wheelstacks(
+            res, db
+        )
+        res['wheelstacksData'] = wheelstacksData
+    cor_res = convert_object_id_and_datetime_to_str(res)
     return JSONResponse(content=cor_res, status_code=status.HTTP_200_OK)
 
 
