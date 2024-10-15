@@ -1,6 +1,6 @@
 from loguru import logger
 from bson import ObjectId
-from .data_gather import grid_gather_wheelstacks
+from .data_gather import placement_gather_wheelstacks
 from routers.presets.crud import get_preset_by_id
 from motor.motor_asyncio import AsyncIOMotorClient
 from database.mongo_connection import mongo_client
@@ -102,10 +102,10 @@ async def route_get_grid_by_object_id(
             status_code=status.HTTP_404_NOT_FOUND,
         )
     if includeWheelstacks:
-        wheelstacksData = await grid_gather_wheelstacks(
+        wheelstacks_data = await placement_gather_wheelstacks(
             res, db
         )
-        res['wheelstacksData'] = wheelstacksData
+        res['wheelstacksData'] = wheelstacks_data
     cor_res = convert_object_id_and_datetime_to_str(res)
     return JSONResponse(content=cor_res, status_code=status.HTTP_200_OK)
 
@@ -131,10 +131,10 @@ async def route_get_grid_by_name(
             status_code=status.HTTP_404_NOT_FOUND,
         )
     if includeWheelstacks:
-        wheelstacksData = await grid_gather_wheelstacks(
+        wheelstacks_data = await placement_gather_wheelstacks(
             res, db
         )
-        res['wheelstacksData'] = wheelstacksData
+        res['wheelstacksData'] = wheelstacks_data
     cor_res = convert_object_id_and_datetime_to_str(res)
     return JSONResponse(content=cor_res, status_code=status.HTTP_200_OK)
 

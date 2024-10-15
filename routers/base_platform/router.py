@@ -5,8 +5,9 @@ from routers.presets.crud import get_preset_by_id
 from motor.motor_asyncio import AsyncIOMotorClient
 from database.mongo_connection import mongo_client
 from routers.grid.crud import collect_wheelstack_cells
-from routers.wheelstacks.crud import db_find_wheelstack_by_object_id
 from auth.jwt_validation import get_role_verification_dependency
+from routers.grid.data_gather import placement_gather_wheelstacks
+from routers.wheelstacks.crud import db_find_wheelstack_by_object_id
 from utility.utilities import get_object_id, convert_object_id_and_datetime_to_str
 from fastapi import APIRouter, Depends, status, Query, Path, HTTPException, Response
 from .crud import get_platform_by_object_id, place_wheelstack_in_platform, db_get_platform_last_change_time
@@ -87,6 +88,8 @@ async def route_get_all_grids(
 )
 async def route_get_platform_by_object_id(
         platform_object_id: str = Path(..., description='`objectId` of stored `basePlatform`'),
+        includeWheelstacks: bool = Query(False, 
+                                         description='Include all of the `wheelstack`s current data'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
         token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
@@ -97,7 +100,12 @@ async def route_get_platform_by_object_id(
             detail=f'`basePlatform` with `objectId` = {platform_object_id} not Found.',
             status_code=status.HTTP_404_NOT_FOUND,
         )
-    cor_res = await platform_make_json_friendly(res)
+    if includeWheelstacks:
+        wheelstacks_data = await placement_gather_wheelstacks(
+            res, db
+        )
+        res['wheelstacksData'] = wheelstacks_data
+    cor_res = convert_object_id_and_datetime_to_str(res)
     return JSONResponse(content=cor_res, status_code=status.HTTP_200_OK)
 
 
@@ -110,16 +118,23 @@ async def route_get_platform_by_object_id(
 async def route_get_platform_by_name(
         name: str = Path(...,
                          description='`name` of stored `basePlatform`'),
+        includeWheelstacks: bool = Query(False, 
+                                         description='Include all of the `wheelstack`s current data'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
         token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES | CELERY_ACTION_ROLES),
 ):
-    exist = await get_platform_by_name(name, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
-    if exist is None:
+    res = await get_platform_by_name(name, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
+    if res is None:
         raise HTTPException(
             detail=f'`basePlatform` with `name` = {name}. Not Found.',
             status_code=status.HTTP_404_NOT_FOUND,
         )
-    cor_res = await platform_make_json_friendly(exist)
+    if includeWheelstacks:
+        wheelstacks_data = await placement_gather_wheelstacks(
+            res, db
+        )
+        res['wheelstacksData'] = wheelstacks_data
+    cor_res = convert_object_id_and_datetime_to_str(res)
     return JSONResponse(content=cor_res, status_code=status.HTTP_200_OK)
 
 
