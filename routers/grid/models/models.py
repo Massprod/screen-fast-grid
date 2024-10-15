@@ -101,3 +101,11 @@ class GridModelResponse(BaseModel):
                 }
             }
         }
+
+
+class AssignModel(BaseModel):
+    platforms: list[str] = Field(...,
+                                 description='List with Names of the platforms to assign',
+                                 min_length=1,
+                                 max_length=10,
+                                 )

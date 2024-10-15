@@ -6,7 +6,7 @@ from fastapi import status
 from pymongo.errors import PyMongoError
 from fastapi.exceptions import HTTPException
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
-from utility.utilities import get_db_collection, time_w_timezone, log_db_record, get_object_id
+from utility.utilities import get_db_collection, time_w_timezone, log_db_record, get_object_id, log_db_error_record
 
 
 async def grid_make_json_friendly(grid_data: dict) -> dict:
@@ -629,5 +629,80 @@ async def db_get_grid_last_change_time(
         logger.error(f'Error while searching in {db_collection}: {error}')
         raise HTTPException(
             detail=f'Error while getting `lastChange` time',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+async def db_grid_get_custom_fields(
+        grid_id: ObjectId,
+        custom_fields: list[str],
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+):
+    collection = await get_db_collection(
+        db, db_name, db_collection
+    )
+    db_info = await log_db_record(db_name, db_collection)
+    log_str: str = f'Attempt to gather `grid` records data => {grid_id} | With custom fields: '
+    query = {
+        '_id': grid_id
+    }
+    projection = {'_id': 1}
+    for field in custom_fields:
+        projection[field] = 1
+        log_str += f'{field} | '
+    logger.info(
+        log_str + db_info
+    )
+    try:
+        result = await collection.find_one(query, projection)
+        logger.info(f'Successfully gathered `grid` records data => {grid_id}')
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        error_str: str = f'Error while gathering `grid` data => {grid_id}'
+        logger.error(error_str + db_info + error_extra)
+        raise HTTPException(
+            detail=error_str,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+async def db_grid_add_assigned_platforms(
+        grid_id: ObjectId,
+        platforms: list[str],
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+):
+    collection = await get_db_collection(
+        db, db_name, db_collection
+    )
+    db_info = await log_db_record(db_name, db_collection)
+    log_str: str = f'Attempt to assign new `platform`s to `grid` => {grid_id} | New platforms: {platforms}'
+    query = {
+        '_id': grid_id
+    }
+    update = {
+        '$push': {
+            'assignedPlatforms': {
+                '$each': platforms,
+            }
+        }
+    }
+    logger.info(
+        log_str + db_info
+    )
+    try:
+        result = await collection.update_one(query, update)
+        logger.info(f'Successfully updated `grid` with new `assignedPlatforms` data => {grid_id}')
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        error_str: str = f'Error while updating `grid` data => {grid_id}'
+        logger.error(error_str + db_info + error_extra)
+        raise HTTPException(
+            detail=error_str,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

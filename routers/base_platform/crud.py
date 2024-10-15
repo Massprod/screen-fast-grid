@@ -114,12 +114,20 @@ async def get_platform_by_name(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
+        include_data: bool = True,
 ):
     collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        'name': platform_name
+    }
+    projection = {}
+    if not include_data:
+        projection = {
+            '_id': 1,
+            'name': 1,
+        }
     try:
-        platform = await collection.find_one(
-            {'name': platform_name}
-        )
+        platform = await collection.find_one(query, projection)
         return platform
     except PyMongoError as error:
         logger.error(f'Error while searching in DB: {error}`')

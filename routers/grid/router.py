@@ -1,13 +1,15 @@
 from loguru import logger
 from bson import ObjectId
-from .data_gather import placement_gather_wheelstacks
+from routers.grid.models.models import AssignModel
 from routers.presets.crud import get_preset_by_id
 from motor.motor_asyncio import AsyncIOMotorClient
 from database.mongo_connection import mongo_client
 from fastapi.responses import JSONResponse, Response
+from .data_gather import placement_gather_wheelstacks
 from ..wheelstacks.crud import db_find_wheelstack_by_object_id
 from auth.jwt_validation import get_role_verification_dependency
-from fastapi import APIRouter, Depends, HTTPException, status, Path, Query
+from routers.base_platform.crud import get_platform_by_name
+from fastapi import APIRouter, Depends, HTTPException, status, Path, Query, Body
 from utility.utilities import get_object_id, convert_object_id_and_datetime_to_str
 from .crud import (
     get_grid_by_object_id,
@@ -22,7 +24,9 @@ from .crud import (
     clear_grid_cell,
     get_all_grids,
     get_all_grids_data,
-    db_get_grid_last_change_time
+    db_grid_get_custom_fields,
+    db_grid_add_assigned_platforms,
+    db_get_grid_last_change_time,
 )
 from constants import (
     DB_PMK_NAME,
@@ -32,6 +36,7 @@ from constants import (
     CLN_WHEELSTACKS,
     ADMIN_ACCESS_ROLES,
     BASIC_PAGE_VIEW_ROLES,
+    CLN_BASE_PLATFORM,
 )
 
 router = APIRouter()
@@ -406,3 +411,43 @@ async def route_get_change_time(
         content=res,
         status_code=status.HTTP_200_OK,
     )
+
+
+@router.patch(
+    path='/assign_platforms/{grid_object_id}',
+    description='Update `assignedPlatforms` with a new provided data. Ignores non existing platforms',
+    name='Assign Platforms',
+)
+async def route_patch_assign_platform(
+    grid_object_id: str = Path(...,
+                               description='`ObjectId` of the `grid` to search'),
+    platforms: AssignModel = Body(..., description='List with platform Names to assign'),
+    db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+    token_data: dict = get_role_verification_dependency(ADMIN_ACCESS_ROLES),
+):
+    platforms_data = platforms.model_dump()
+    assign_platforms = platforms_data['platforms']
+    grid_object_id = await get_object_id(grid_object_id)
+    grid_exists  = await db_grid_get_custom_fields(
+        grid_object_id, ['assignedPlatforms'], db, DB_PMK_NAME, CLN_GRID
+    )
+    if grid_exists is None:
+        raise HTTPException(
+            detail=f'`grid` with `ObjectId` = {grid_object_id}. Not Found',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    correct_platforms: list[str] = []
+    for platform in assign_platforms:
+        platform_exists = await get_platform_by_name(
+            platform, db, DB_PMK_NAME, CLN_BASE_PLATFORM, False
+        )
+        if (platform_exists is None
+            or ('assignedPlatforms' in grid_exists and platform in grid_exists['assignedPlatforms'])):
+            continue
+        correct_platforms.append(platform)
+    if not correct_platforms:
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED)
+    result = await db_grid_add_assigned_platforms(
+        grid_object_id, correct_platforms, db, DB_PMK_NAME, CLN_GRID
+    )
+    return Response(status_code=status.HTTP_200_OK)

@@ -156,8 +156,10 @@ async def prepare_db():
             logger.info(
                 f'Creating basic `grid` placement => {pmk_grid_name}'
             )
+            platform_name = platform_exists['name']
             cor_grid_data = await collect_wheelstack_cells(grid_preset)
             cor_grid_data['name'] = pmk_grid_name
+            cor_grid_data['assignedPlatforms'] = [platform_name]
             res = await create_grid(
                 cor_grid_data, db, DB_PMK_NAME, CLN_GRID
             )
