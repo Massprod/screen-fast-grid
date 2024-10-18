@@ -436,15 +436,24 @@ async def route_patch_assign_platform(
             detail=f'`grid` with `ObjectId` = {grid_object_id}. Not Found',
             status_code=status.HTTP_404_NOT_FOUND,
         )
+    grid_assigned = grid_exists.get('assignedPlatforms', [])
+    current_platforms: set[str] = {
+        object['platformName'] for object in grid_assigned
+    }
     correct_platforms: list[str] = []
     for platform in assign_platforms:
+        if platform in current_platforms:
+            continue
         platform_exists = await get_platform_by_name(
             platform, db, DB_PMK_NAME, CLN_BASE_PLATFORM, False
         )
         if (platform_exists is None
             or ('assignedPlatforms' in grid_exists and platform in grid_exists['assignedPlatforms'])):
             continue
-        correct_platforms.append(platform)
+        correct_platforms.append({
+            'platformId': platform_exists['_id'],
+            'platformName': platform_exists['name'],
+        })
     if not correct_platforms:
         return Response(status_code=status.HTTP_304_NOT_MODIFIED)
     result = await db_grid_add_assigned_platforms(
