@@ -595,7 +595,7 @@ async def orders_create_bulk_move_to_pro_rej_orders(
             batch_number, available_statuses, db, DB_PMK_NAME, CLN_WHEELSTACKS
         )
     else:
-        source_placement_id = order_req_data['placement_id']
+        source_placement_id = order_req_data['placementId']
         source_placement_type = order_req_data['placementType']
         source_placement_object_id = await get_object_id(source_placement_id)
         all_available = await db_find_all_pro_rej_available_in_placement(
