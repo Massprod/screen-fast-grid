@@ -198,6 +198,8 @@ async def db_history_get_placement_wheelstacks(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
+        status_filter: list[str] = [PS_SHIPPED, PS_REJECTED],
+        include_filter: bool = False,
 ):
     collection = await get_db_collection(db, db_name, db_collection)
     db_info = await log_db_record(db_name, db_collection)
@@ -205,16 +207,13 @@ async def db_history_get_placement_wheelstacks(
         f'Attempt to gather `wheelstacksData` for `placementId` => {placement_id}'
         f' of type {placement_type}' + db_info
     )
-    query = {
-        '$and': [
-            {'placement.placementId': placement_id},
-            {'placement.type': placement_type},
-            {'status': {
-                '$nin': [PS_SHIPPED, PS_REJECTED]
-            },
-            },
-        ]
-    }
+    filters = [
+        {'placement.placementId': placement_id},
+        {'placement.type': placement_type},
+    ]
+    status_condition = {'$in': status_filter} if include_filter else {'$nin': status_filter}
+    filters.append({'status': status_condition})
+    query = {'$and': filters}
     try:
         result = await collection.find(query).to_list(length=None)
         logger.info(

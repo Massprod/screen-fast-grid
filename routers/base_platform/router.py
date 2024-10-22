@@ -1,3 +1,4 @@
+import asyncio
 from bson import ObjectId
 from loguru import logger
 from fastapi.responses import JSONResponse
@@ -5,10 +6,16 @@ from routers.presets.crud import get_preset_by_id
 from motor.motor_asyncio import AsyncIOMotorClient
 from database.mongo_connection import mongo_client
 from routers.grid.crud import collect_wheelstack_cells
+from routers.wheels.crud import db_find_many_wheels_by_id
 from auth.jwt_validation import get_role_verification_dependency
-from routers.grid.data_gather import placement_gather_wheelstacks
 from routers.wheelstacks.crud import db_find_wheelstack_by_object_id
-from utility.utilities import get_object_id, convert_object_id_and_datetime_to_str
+from routers.wheelstacks.crud import db_history_get_placement_wheelstacks
+from utility.utilities import (
+    get_object_id,
+    convert_object_id_and_datetime_to_str,
+    async_convert_object_id_and_datetime_to_str,
+)
+from routers.grid.data_gather import placement_gather_wheelstacks, convert_and_store_threadpool
 from fastapi import APIRouter, Depends, status, Query, Path, HTTPException, Response
 from .crud import get_platform_by_object_id, place_wheelstack_in_platform, db_get_platform_last_change_time
 from constants import (
@@ -20,6 +27,7 @@ from constants import (
     BASIC_PAGE_VIEW_ROLES,
     ADMIN_ACCESS_ROLES,
     CELERY_ACTION_ROLES,
+    CLN_WHEELS,
 )
 from routers.base_platform.crud import (
     platform_make_json_friendly,
@@ -90,39 +98,78 @@ async def route_get_platform_by_object_id(
         platform_object_id: str = Path(..., description='`objectId` of stored `basePlatform`'),
         includeWheelstacks: bool = Query(False, 
                                          description='Include all of the `wheelstack`s current data'),
+        includeWheels: bool = Query(False,
+                                    description='Include all of the `wheel`s current data'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
+        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES | CELERY_ACTION_ROLES),
 ):
     platform_id: ObjectId = await get_object_id(platform_object_id)
-    res = await get_platform_by_object_id(platform_id, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
-    if res is None:
+    platform_task = get_platform_by_object_id(platform_id, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
+    wheelstacks_task = []
+    wheelstacks_data = []
+    wheels_data = []
+
+    if includeWheelstacks:
+        wheelstacks_task = db_history_get_placement_wheelstacks(
+            platform_id, PRES_TYPE_PLATFORM, db, DB_PMK_NAME, CLN_WHEELSTACKS, [PRES_TYPE_PLATFORM], True
+        )
+
+    if wheelstacks_task:
+        platform_res, wheelstacks_data = await asyncio.gather(platform_task, wheelstacks_task)
+    else:
+        platform_res = await platform_task
+
+    if platform_res is None:
         raise HTTPException(
-            detail=f'`basePlatform` with `objectId` = {platform_object_id} not Found.',
+            detail=f'`grid` with `objectId` = {platform_object_id} not Found',
             status_code=status.HTTP_404_NOT_FOUND,
         )
-    if includeWheelstacks:
-        wheelstacks_data = await placement_gather_wheelstacks(
-            res, db
-        )
-        res['wheelstacksData'] = wheelstacks_data
-    cor_res = convert_object_id_and_datetime_to_str(res)
+
+    platform_wheels: list[ObjectId] = []
+    conversion_tasks = []
+    wheels_conversion_task = None
+    if wheelstacks_data is not None:
+        wheelstacks_conversion_task = convert_and_store_threadpool(wheelstacks_data)
+        conversion_tasks.append(wheelstacks_conversion_task)
+
+    if includeWheels:
+        for wheelstack in wheelstacks_data:
+            platform_wheels.extend(wheelstack['wheels'])
+        if platform_wheels:
+            wheels_data: list[dict] = await db_find_many_wheels_by_id(
+                platform_wheels, db, DB_PMK_NAME, CLN_WHEELS
+            )    
+            wheels_conversion_task = convert_and_store_threadpool(wheels_data)
+            conversion_tasks.append(wheels_conversion_task)
+    
+    if conversion_tasks:
+        converted_results = await asyncio.gather(*conversion_tasks)
+        if wheelstacks_data is not None:
+            platform_res['wheelstacksData'] = converted_results[0]
+        if wheels_conversion_task:
+            wheels_res = converted_results[-1]
+            platform_res['wheelsData'] = wheels_res
+
+    cor_res = await async_convert_object_id_and_datetime_to_str(platform_res)
     return JSONResponse(content=cor_res, status_code=status.HTTP_200_OK)
 
 
 @router.get(
     path='/name/{name}',
-    description='get current `basePlatform` state in DB by `name`',
+    description='Get current `basePlatform` state in DB by `name`',
     response_class=JSONResponse,
-    name='Get Platform state'
+    name='Get Platform State'
 )
-async def route_get_platform_by_name(
+async def route_get_grid_by_name(
         name: str = Path(...,
                          description='`name` of stored `basePlatform`'),
-        includeWheelstacks: bool = Query(False, 
+        includeWheelstacks: bool = Query(False,
                                          description='Include all of the `wheelstack`s current data'),
-        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        db=Depends(mongo_client.depend_client),
         token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES | CELERY_ACTION_ROLES),
 ):
+    # TODO: Rebuild, according to ID option.
+    #       We're not using this to get data, but it can be...
     res = await get_platform_by_name(name, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
     if res is None:
         raise HTTPException(

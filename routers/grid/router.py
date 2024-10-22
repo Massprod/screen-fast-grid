@@ -1,3 +1,4 @@
+import asyncio
 from loguru import logger
 from bson import ObjectId
 from routers.grid.models.models import AssignModel
@@ -5,12 +6,18 @@ from routers.presets.crud import get_preset_by_id
 from motor.motor_asyncio import AsyncIOMotorClient
 from database.mongo_connection import mongo_client
 from fastapi.responses import JSONResponse, Response
-from .data_gather import placement_gather_wheelstacks
+from routers.wheels.crud import db_find_many_wheels_by_id
 from ..wheelstacks.crud import db_find_wheelstack_by_object_id
 from auth.jwt_validation import get_role_verification_dependency
 from routers.base_platform.crud import get_platform_by_name
+from routers.wheelstacks.crud import db_history_get_placement_wheelstacks
 from fastapi import APIRouter, Depends, HTTPException, status, Path, Query, Body
-from utility.utilities import get_object_id, convert_object_id_and_datetime_to_str
+from .data_gather import placement_gather_wheelstacks, convert_and_store_threadpool
+from utility.utilities import (
+    get_object_id,
+    convert_object_id_and_datetime_to_str,
+    async_convert_object_id_and_datetime_to_str,
+)
 from .crud import (
     get_grid_by_object_id,
     grid_make_json_friendly,
@@ -34,9 +41,11 @@ from constants import (
     CLN_PRESETS,
     PRES_TYPE_GRID,
     CLN_WHEELSTACKS,
+    CLN_WHEELS,
     ADMIN_ACCESS_ROLES,
     BASIC_PAGE_VIEW_ROLES,
     CLN_BASE_PLATFORM,
+    PT_GRID,
 )
 
 router = APIRouter()
@@ -96,22 +105,63 @@ async def route_get_grid_by_object_id(
         grid_object_id: str = Path(..., description='`objectId` of stored `grid`'),
         includeWheelstacks: bool = Query(False,
                                          description='Include all of the `wheelstack`s current data'),
+        includeWheels: bool = Query(False,
+                                    description='Include all of the `wheel`s current data'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
         token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
     grid_id: ObjectId = await get_object_id(grid_object_id)
-    res = await get_grid_by_object_id(grid_id, db, DB_PMK_NAME, CLN_GRID)
-    if res is None:
+    grid_task = get_grid_by_object_id(grid_id, db, DB_PMK_NAME, CLN_GRID)
+    wheelstacks_task = []
+    wheelstacks_data = []
+    wheels_data = []
+
+    # Fetch wheelstacks if requested
+    if includeWheelstacks:
+        wheelstacks_task = db_history_get_placement_wheelstacks(
+            grid_id, PT_GRID, db, DB_PMK_NAME, CLN_WHEELSTACKS, [PT_GRID], True
+        )
+
+    # Fetch grid and wheelstacks concurrently if needed
+    if wheelstacks_task:
+        grid_res, wheelstacks_data = await asyncio.gather(grid_task, wheelstacks_task)
+    else:
+        grid_res = await grid_task
+
+    # Check if grid was found
+    if grid_res is None:
         raise HTTPException(
             detail=f'`grid` with `objectId` = {grid_object_id} not Found',
             status_code=status.HTTP_404_NOT_FOUND,
         )
-    if includeWheelstacks:
-        wheelstacks_data = await placement_gather_wheelstacks(
-            res, db
-        )
-        res['wheelstacksData'] = wheelstacks_data
-    cor_res = convert_object_id_and_datetime_to_str(res)
+
+    # Fetch wheels data if requested
+    grid_wheels: list[ObjectId] = []
+    conversion_tasks = []
+    wheels_conversion_task = None
+    if wheelstacks_data is not None:
+        wheelstacks_conversion_task = convert_and_store_threadpool(wheelstacks_data)
+        conversion_tasks.append(wheelstacks_conversion_task)
+
+    if includeWheels:
+        for wheelstack in wheelstacks_data:
+            grid_wheels.extend(wheelstack['wheels'])
+        if grid_wheels:
+            wheels_data: list[dict] = await db_find_many_wheels_by_id(
+                grid_wheels, db, DB_PMK_NAME, CLN_WHEELS
+            )    
+            wheels_conversion_task = convert_and_store_threadpool(wheels_data)
+            conversion_tasks.append(wheels_conversion_task)
+    
+    if conversion_tasks:
+        converted_results = await asyncio.gather(*conversion_tasks)
+        if wheelstacks_data is not None:
+            grid_res['wheelstacksData'] = converted_results[0]
+        if wheels_conversion_task:
+            wheels_res = converted_results[-1]
+            grid_res['wheelsData'] = wheels_res
+
+    cor_res = await async_convert_object_id_and_datetime_to_str(grid_res)
     return JSONResponse(content=cor_res, status_code=status.HTTP_200_OK)
 
 
@@ -129,6 +179,8 @@ async def route_get_grid_by_name(
         db=Depends(mongo_client.depend_client),
         token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
+    # TODO: Rebuild, according to ID option.
+    #       We're not using this to get data, but it can be...
     res = await get_grid_by_name(name, db, DB_PMK_NAME, CLN_GRID)
     if res is None:
         raise HTTPException(

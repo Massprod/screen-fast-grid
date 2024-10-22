@@ -1,3 +1,4 @@
+import asyncio
 from loguru import logger
 from bson import ObjectId
 from pymongo import errors
@@ -128,6 +129,22 @@ def convert_object_id_and_datetime_to_str(doc):
         return {k: convert_object_id_and_datetime_to_str(v) for k, v in doc.items()}
     elif isinstance(doc, list):
         return [convert_object_id_and_datetime_to_str(v) for v in doc]
+    elif isinstance(doc, ObjectId):
+        return str(doc)
+    elif isinstance(doc, datetime):
+        return doc.isoformat()
+    else:
+        return doc
+
+async def async_convert_object_id_and_datetime_to_str(doc):
+    if isinstance(doc, dict):
+        # Convert dictionary values concurrently
+        tasks = {k: async_convert_object_id_and_datetime_to_str(v) for k, v in doc.items()}
+        return {k: await v for k, v in tasks.items()}
+    elif isinstance(doc, list):
+        # Convert list values concurrently
+        tasks = [async_convert_object_id_and_datetime_to_str(v) for v in doc]
+        return await asyncio.gather(*tasks)
     elif isinstance(doc, ObjectId):
         return str(doc)
     elif isinstance(doc, datetime):

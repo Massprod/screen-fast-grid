@@ -3,11 +3,10 @@ from uuid import uuid4
 from loguru import logger
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
+from brotli_asgi import BrotliMiddleware
 from contextlib import asynccontextmanager
 from database.mongo_connection import mongo_client
 from fastapi.middleware.cors import CORSMiddleware
-from routers.base_platform.crud import get_platform_by_name, create_platform
-from routers.grid.crud import collect_wheelstack_cells, get_grid_by_name, create_grid
 from routers.grid.router import router as grid_router
 from routers.wheels.router import router as wheel_router
 from routers.orders.router import router as orders_router
@@ -19,8 +18,11 @@ from routers.wheelstacks.router import router as wheelstack_router
 from routers.presets.crud import add_new_preset, get_preset_by_name
 from database.collections.collections import create_basic_collections
 from routers.batch_numbers.router import router as batch_numbers_router
+from routers.base_platform.crud import get_platform_by_name, create_platform
+from routers.grid.crud import collect_wheelstack_cells, get_grid_by_name, create_grid
 from database.presets.presets import create_pmk_grid_preset, create_pmk_platform_preset
 from constants import PRES_PMK_GRID, PRES_PMK_PLATFORM, DB_PMK_NAME, CLN_PRESETS, CLN_BASE_PLATFORM, CLN_GRID
+
 
 # TODO: We need to change records CREATION for some cases.
 #  Because, if we're getting multiple requests when we
@@ -78,6 +80,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+app.add_middleware(
+    BrotliMiddleware, quality=3, minimum_size=1000
 )
 
 app.include_router(presets_router, prefix='/presets', tags=['Preset'])

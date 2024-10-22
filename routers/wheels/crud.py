@@ -264,3 +264,36 @@ async def db_update_wheel_transfer_status(
             detail=f'Error while updating `wheel` document',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+async def db_find_many_wheels_by_id(
+        wheel_object_ids: list[ObjectId],
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+):
+    db_info = await log_db_record(db_name, db_collection)
+    logger.info(
+        f'Attempt to gather many `wheel`s' + db_info
+    )
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': {
+            '$in': wheel_object_ids
+        }
+    }
+    try:
+        result = await collection.find(query).to_list(length=None)
+        logger.info(
+            f'Successfully found all `wheel`s' + db_info
+        )
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        logger.error(
+            f'Error while gathering `wheel`s documents' + db_info + error_extra
+        )
+        raise HTTPException(
+            detail=f'Error while gathering `wheel`s documents',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
