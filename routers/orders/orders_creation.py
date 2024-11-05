@@ -150,9 +150,10 @@ async def orders_create_move_whole_wheelstack(db: AsyncIOMotorClient, order_data
                 'blockedBy': created_order_id,
             }
             if PRES_TYPE_GRID == source_type:
+                record_change = False if source_id == destination_id else True
                 await db_update_grid_cell_data(
                     source_id, source_row, source_col, new_source_cell_data,
-                    db, DB_PMK_NAME, CLN_GRID, session, False
+                    db, DB_PMK_NAME, CLN_GRID, session, record_change
                 )
             elif PRES_TYPE_PLATFORM == source_type:
                 await db_update_platform_cell_data(

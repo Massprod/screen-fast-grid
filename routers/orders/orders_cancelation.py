@@ -204,9 +204,10 @@ async def orders_cancel_move_wholestack(
     async with (await db.start_session()) as session:
         async with session.start_transaction():
             if PRES_TYPE_GRID == source_type:
+                record_change = False if source_id == dest_id else True
                 await db_update_grid_cell_data(
                     source_id, source_row, source_col, source_cell_data,
-                    db, DB_PMK_NAME, CLN_GRID, session, False
+                    db, DB_PMK_NAME, CLN_GRID, session, record_change
                 )
             elif PRES_TYPE_PLATFORM == source_type:
                 await db_update_platform_cell_data(
