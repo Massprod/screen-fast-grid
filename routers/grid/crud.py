@@ -165,6 +165,7 @@ async def create_grid(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
+        assignedPlatforms: list[str] = [],
 ):
     grid_data = {
         'preset': preset_data['_id'],
@@ -175,6 +176,8 @@ async def create_grid(
         'rows': preset_data['rows'],
         'extra': preset_data['extra'],
     }
+    if assignedPlatforms:
+        grid_data['assignedPlatforms'] = assignedPlatforms
     collection = await get_db_collection(db, db_name, db_collection)
     db_log_data = await log_db_record(db_name, db_collection)
     logger.info(
@@ -377,9 +380,10 @@ async def db_update_grid_cell_data(
     }
     update = {
         '$set': {
-            f'rows.{row}.columns.{col}.wheelStack': new_data['wheelStack'],
-            f'rows.{row}.columns.{col}.blocked': new_data['blocked'],
-            f'rows.{row}.columns.{col}.blockedBy': new_data['blockedBy'],
+            f'rows.{row}.columns.{col}.{key}': value for key, value in new_data.items()
+            # f'rows.{row}.columns.{col}.wheelStack': new_data['wheelStack'],
+            # f'rows.{row}.columns.{col}.blocked': new_data['blocked'],
+            # f'rows.{row}.columns.{col}.blockedBy': new_data['blockedBy'],
         }
     }
     if record_change:

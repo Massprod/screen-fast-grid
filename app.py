@@ -132,7 +132,7 @@ async def prepare_db():
         # + basePlatform +
         pmk_platform_name = os.getenv('PMK_PLATFORM_NAME', 'pmkBase1')
         platform_exists = await get_platform_by_name(
-            pmk_platform_name, db, DB_PMK_NAME, CLN_BASE_PLATFORM
+            pmk_platform_name, db, DB_PMK_NAME, CLN_BASE_PLATFORM, False
         )
         if not platform_exists:
             logger.info(
@@ -151,6 +151,9 @@ async def prepare_db():
                 logger.info(
                     f'Created basic `basePlatform` placement => {pmk_platform_name}'
                 )
+            platform_exists = await get_platform_by_name(
+                pmk_platform_name, db, DB_PMK_NAME, CLN_BASE_PLATFORM, False
+            )
         # - basePlatform -
         # + grid +
         pmk_grid_name = os.getenv('PMK_GRID_NAME', 'pmkGrid1')
@@ -161,12 +164,15 @@ async def prepare_db():
             logger.info(
                 f'Creating basic `grid` placement => {pmk_grid_name}'
             )
-            platform_name = platform_exists['name']
+            platform_data = {
+                'platformId': platform_exists['_id'],
+                'platformName': platform_exists['name'],
+            }
             cor_grid_data = await collect_wheelstack_cells(grid_preset)
             cor_grid_data['name'] = pmk_grid_name
-            cor_grid_data['assignedPlatforms'] = [platform_name]
+
             res = await create_grid(
-                cor_grid_data, db, DB_PMK_NAME, CLN_GRID
+                cor_grid_data, db, DB_PMK_NAME, CLN_GRID, [platform_data]
             )
             if not res:
                 logger.error(
