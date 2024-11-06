@@ -1,4 +1,6 @@
+from bson import ObjectId
 from loguru import logger
+from typing import Optional
 from utility.utilities import get_object_id
 from motor.motor_asyncio import AsyncIOMotorClient
 from database.mongo_connection import mongo_client
@@ -16,9 +18,11 @@ from routers.storages.crud import (
     db_get_storage_by_object_id,
     db_storage_make_json_friendly,
     db_get_all_storages,
-    db_storage_delete_empty_batches
+    db_storage_get_placed_wheelstack,
+    db_get_storage_by_element,
 )
 from auth.jwt_validation import get_role_verification_dependency
+
 
 router = APIRouter()
 
@@ -97,56 +101,6 @@ async def route_get_created_storage(
     )
 
 
-@router.patch(
-    path='/clear',
-    description='Clear empty `batchNumbers` in `elements` or delete `storage` itself',
-    name='Clear Empty Batches',
-)
-async def route_patch_created_storage(
-        storage_name: str = Query(None,
-                                  description='Name of the storage to search'),
-        storage_id: str = Query(None,
-                                description='`ObjectId` of the storage to search'),
-        batch_number: str = Query(None,
-                                  description='Clear empty batches'),
-        db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
-        token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
-):
-    if not storage_name and not storage_id:
-        logger.warning(f'Attempt to search for a `storage` without correctly provided Query parameters')
-        raise HTTPException(
-            detail='You must provide either `ObjectId` or `name` to search for a `storage`',
-            status_code=status.HTTP_400_BAD_REQUEST,
-        )
-    storage = None
-    include_data = True if not batch_number else False
-    if storage_id:
-        storage_object_id = await get_object_id(storage_id)
-        storage = await db_get_storage_by_object_id(
-            storage_object_id, include_data, db, DB_PMK_NAME, CLN_STORAGES
-        )
-    elif storage_name:
-        storage = await db_get_storage_by_name(
-            storage_name, include_data, db, DB_PMK_NAME, CLN_STORAGES
-        )
-    if storage is None:
-        raise HTTPException(
-            detail=f'Storage not found',
-            status_code=status.HTTP_404_NOT_FOUND,
-        )
-    batch_numbers = []
-    if include_data:
-        batch_numbers = [key for key, value in storage['elements'].items() if len(value) == 0]
-    if batch_number:
-        batch_numbers.append(batch_number)
-    res = await db_storage_delete_empty_batches(
-        storage['_id'], batch_numbers, db, DB_PMK_NAME, CLN_STORAGES
-    )
-    return Response(
-        status_code=status.HTTP_204_NO_CONTENT,
-    )
-
-
 @router.get(
     path='/all',
     description='Get all of the storages currently presented in DB. With data or without.',
@@ -163,5 +117,69 @@ async def route_get_created_storages(
         resp_data[index] = await db_storage_make_json_friendly(resp_data[index])
     return JSONResponse(
         content=resp_data,
+        status_code=status.HTTP_200_OK,
+    )
+
+
+@router.get(
+    path='/find_in',
+    description='Check element presence in storage by `ObjectId` of the element',
+    name='Check Element',
+)
+async def route_get_stored_element(
+    storage_name: Optional[str] = Query(None,
+                                      description='Storage `name` to filter on'),
+    storage_id: Optional[str] = Query(None,
+                                      description='Storage `ObjectId` to filter on'),
+    element_id: str = Query(...,
+                            description='Stored element `ObjectId` to filter on'),
+    db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+    token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
+):
+    if not storage_id and not storage_name:
+        logger.warning(f'Attempt to search in `storage` without correctly provided Query parameters')
+        raise HTTPException(
+            detail='You must provide either `ObjectId` or `name` to search in `storage`',
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    if storage_id:
+        storage_id = await get_object_id(storage_id)
+    element_object_id = await get_object_id(element_id)
+    resp_data = await db_storage_get_placed_wheelstack(
+        storage_id, storage_name, element_object_id, db, DB_PMK_NAME, CLN_STORAGES
+    )
+    if not resp_data:
+        raise HTTPException(
+            detail='Storage doesnt contain provided element',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    return Response(status_code=status.HTTP_200_OK)
+
+
+@router.get(
+    path='/find',
+    description='Search storage by element `ObjectId` stored in it',
+    name='Find Storage',
+)
+async def route_get_storage_by_element(
+    element_id: str = Query(...,
+                            description='Stored element `ObjectId` to filter on'),
+    db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+    token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
+):
+    element_object_id: ObjectId = await get_object_id(element_id)
+    storage_data = await db_get_storage_by_element(
+        element_object_id, db, DB_PMK_NAME, CLN_STORAGES
+    )
+    if not storage_data:
+        raise HTTPException(
+            detail='NotFound',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    resp_body = {
+        'storage': storage_data,
+    }
+    return JSONResponse(
+        content=resp_body,
         status_code=status.HTTP_200_OK,
     )

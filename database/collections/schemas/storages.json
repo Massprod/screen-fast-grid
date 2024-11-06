@@ -19,13 +19,18 @@
       "description": "Required. Date of the last change made in the storage"
     },
     "elements": {
-      "bsonType": "object",
-      "description": "Required. Elements currently placed in the storage"
+      "bsonType": "array",
+      "description": "Required. `ObjectId` of the elements currently placed in the storage",
+      "items": {
+        "bsonType": "objectId",
+        "description": "`ObjectId` of the element"
+      }
     }
   },
   "indexes": [
     { "keys": {"name":  1}, "options" :  {"unique": true, "name":  "Indexing by unique name of the document"} },
     { "keys": {"createdAt":  -1}, "options": {"name":  "Indexing by the date of creation of the document"} },
-    { "keys": {"lastChange":  -1}, "options": {"name": "Indexing by the date of last change of the document"} }
+    { "keys": {"lastChange":  -1}, "options": {"name": "Indexing by the date of last change of the document"} },
+    { "keys": {"elements": 1}, "options": {"name": "Elements indexing"} }
   ]
 }

@@ -31,7 +31,7 @@ async def db_create_storage(
         'name': storage_name,
         'createdAt': creation_time,
         'lastChange': creation_time,
-        'elements': {},
+        'elements': [],
     }
     try:
         result = await collection.insert_one(storage_data)
@@ -124,8 +124,8 @@ async def db_get_storage_by_object_id(
 
 async def db_storage_place_wheelstack(
         storage_object_id: ObjectId,
+        storage_name: str,
         wheelstack_id: ObjectId,
-        batch_number: str,
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
@@ -139,11 +139,14 @@ async def db_storage_place_wheelstack(
     )
     collection = await get_db_collection(db, db_name, db_collection)
     query = {
-        '_id': storage_object_id,
+        '$or': [
+            {'_id': storage_object_id},
+            {'name': storage_name},
+        ]
     }
     update = {
-        '$set': {
-            f'elements.{batch_number}.{wheelstack_id}': wheelstack_id,
+        '$addToSet': {
+            f'elements': wheelstack_id,
         }
     }
     if record_change:
@@ -168,18 +171,21 @@ async def db_storage_place_wheelstack(
         )
 
 
-async def db_storage_check_placed_wheelstack(
+async def db_storage_get_placed_wheelstack(
         storage_object_id: ObjectId,
+        storage_name: str,
         wheelstack_object_id: ObjectId,
-        batch_number_object_id: ObjectId,
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
 ):
     collection = await get_db_collection(db, db_name, db_collection)
     query = {
-        '_id': storage_object_id,
-        f'elements.{batch_number_object_id}.{wheelstack_object_id}': wheelstack_object_id,
+        '$or': [
+            {'_id': storage_object_id},
+            {'name': storage_name},
+        ],
+        f'elements': wheelstack_object_id,
     }
     try:
         result = await collection.find_one(query)
@@ -198,8 +204,8 @@ async def db_storage_check_placed_wheelstack(
 
 async def db_storage_delete_placed_wheelstack(
         storage_object_id: ObjectId,
+        storage_name: str,
         wheelstack_object_id: ObjectId,
-        batch_number_object_id: ObjectId,
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
@@ -208,14 +214,15 @@ async def db_storage_delete_placed_wheelstack(
 ):
     collection = await get_db_collection(db, db_name, db_collection)
     query = {
-        '_id': storage_object_id,
-        f'elements.{batch_number_object_id}.{str(wheelstack_object_id)}': {
-            '$exists': True,
-        },
+        '$or': [
+            {'_id': storage_object_id},
+            {'name': storage_name},
+        ],
+        'elements': wheelstack_object_id,
     }
     update = {
-        '$unset': {
-            f'elements.{batch_number_object_id}.{str(wheelstack_object_id)}': 1,
+        '$pull': {
+            'elements': wheelstack_object_id
         },
     }
     if record_change:
@@ -269,9 +276,8 @@ async def db_get_all_storages(
         )
 
 
-async def db_storage_delete_empty_batches(
-        storage_id: ObjectId,
-        batch_numbers: list[str],
+async def db_get_storage_by_element(
+        element_object_id: ObjectId,
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
@@ -279,29 +285,23 @@ async def db_storage_delete_empty_batches(
     collection = await get_db_collection(db, db_name, db_collection)
     db_info = await log_db_record(db_name, db_collection)
     logger.info(
-        f'Attempt to clear all empty `batchNumbers` from storage = {storage_id}' + db_info
+        f'Attempt to find `storage` by element `ObjectId` => {element_object_id}'
     )
     query = {
-        '_id': storage_id,
+        'elements': element_object_id,
     }
-    update = {
-        '$unset': {
-        }
-    }
-    for batch_number in batch_numbers:
-        update['$unset'][f'elements.{batch_number}'] = 1
     try:
-        result = await collection.update_one(query, update)
+        result = await collection.find_one(query)
         logger.info(
-            f'Successfully cleared all empty `batchNumbers` in `storage` = {storage_id}' + db_info
+            f'Successfully found `storage` with provided element inside'
         )
         return result
     except PyMongoError as error:
         error_extra: str = await log_db_error_record(error)
         logger.error(
-            f'Error while clearing all `batchNumbers` in `storage` = {storage_id}' + db_info + error_extra
+            f'Error while searching for a `storage`'
         )
         raise HTTPException(
-            detail=f'Error while clearing `storage`',
+            detail='Error while searching data',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
