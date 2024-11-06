@@ -6,7 +6,7 @@ from fastapi import HTTPException, status
 from routers.orders.crud import db_create_order
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from routers.storages.crud import db_get_storage_by_object_id, db_storage_check_placed_wheelstack
+from routers.storages.crud import db_get_storage_by_object_id, db_storage_get_placed_wheelstack
 from utility.utilities import get_object_id, time_w_timezone, orders_creation_attempt_string, \
     orders_corrupted_cell_non_existing_wheelstack, orders_corrupted_cell_blocked_wheelstack
 from routers.grid.crud import (db_get_grid_cell_data, db_update_grid_cell_data,
@@ -175,6 +175,201 @@ async def orders_create_move_whole_wheelstack(db: AsyncIOMotorClient, order_data
             await db_update_grid_cell_data(
                 destination_id, destination_row, destination_col,
                 destination_cell_data, db, DB_PMK_NAME, CLN_GRID, session, True
+            )
+            # Destination change ---
+            return created_order_id
+
+
+async def orders_create_merge_wheelstacks(db: AsyncIOMotorClient, order_data: dict) -> ObjectId:
+    # SOURCE:
+    #  1. SourcePlacement EXISTS
+    #  2. SourceCell not `blocked` and not `blockedBy`
+    #  3. SourceCell CONTAINS `wheelStack` and `wheelStack` EXIST, and it's not `blocked`
+    # +++ Source
+    source_id: ObjectId = await get_object_id(order_data['source']['placementId'])
+    source_row: str = order_data['source']['rowPlacement']
+    source_col: str = order_data['source']['columnPlacement']
+    source_type: str = order_data['source']['placementType']
+    source_cell_data = None
+    if PRES_TYPE_GRID == source_type:
+        source_cell_data = await db_get_grid_cell_data(
+            source_id, source_row, source_col, db, DB_PMK_NAME, CLN_GRID
+        )
+    # -1-
+    elif PRES_TYPE_PLATFORM == source_type:
+        source_cell_data = await db_get_platform_cell_data(
+            source_id, source_row, source_col, db, DB_PMK_NAME, CLN_BASE_PLATFORM
+        )
+    if source_cell_data is None:
+        raise HTTPException(
+            detail=f'Source cell or placement doesnt exist. Not Found.',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    source_cell_data = source_cell_data['rows'][source_row]['columns'][source_col]
+    # -2-
+    if source_cell_data['blocked'] or source_cell_data['blockedBy'] is not None:
+        raise HTTPException(
+            detail=f'Source cell `blocked`. Placed order {source_cell_data['blockedBy']}',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    # -3-
+    wheelstack_id: ObjectId = source_cell_data['wheelStack']
+    if wheelstack_id is None:
+        raise HTTPException(
+            detail=f'Source cell doesnt contain any `wheelStack` on it. Not Found.',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    source_wheelstack_data = await db_find_wheelstack_by_object_id(wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS)
+    if source_wheelstack_data is None:
+        logger.error(f"Corrupted cell: row = {source_row}, col = {source_col}"
+                     f" in a {PRES_TYPE_GRID} with `objectId` = {source_id}."
+                     f" There's non-existing `wheelStack` placed on it = {wheelstack_id}")
+        raise HTTPException(
+            detail=f'Corrupted cell: row = {source_row}, col = {source_col}, inform someone to fix it',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    if source_wheelstack_data['blocked']:
+        logger.error(f"Corrupted cell: row = {source_row}, col = {source_col}"
+                     f" in a {PRES_TYPE_GRID} with `objectId` = {source_id}."
+                     f" There's `blocked` `wheelStack` placed on it = {wheelstack_id}."
+                     f" And cell is marked as free.")
+        raise HTTPException(
+            detail=f'Source cell `wheelStack` blocked by other order = {source_wheelstack_data['lastOrder']}',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    # Source ---
+    # DESTINATION:
+    #  1. DestinationPlacement EXISTS
+    #  2. If DESTINATION cell is EMPTY and not `blocked`
+    # +++ Destination
+    destination_id: ObjectId = await get_object_id(order_data['destination']['placementId'])
+    # We allow only moving from `basePlatform` -> `grid` or inside the `grid` => only 1 type `grid`.
+    destination_row: str = order_data['destination']['rowPlacement']
+    destination_col: str = order_data['destination']['columnPlacement']
+    # -1-
+    destination_cell_data = await db_get_grid_cell_data(
+        destination_id, destination_row, destination_col, db, DB_PMK_NAME, CLN_GRID
+    )
+    if destination_cell_data is None:
+        raise HTTPException(
+            detail=f'Destination cell or placement doesnt exist. Not Found.',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    destination_cell_data = destination_cell_data['rows'][destination_row]['columns'][destination_col]
+    if (destination_cell_data['blocked']
+            or destination_cell_data['blockedBy'] is not None):
+        raise HTTPException(
+            detail=f'Destination cell is `blocked`',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    dest_wheelstack_id = destination_cell_data['wheelStack']
+    if not dest_wheelstack_id:
+        raise HTTPException(
+            detail=f'Destination cell doesnt contain any wheelstack to merge with',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    destination_wheelstack_data = await db_find_wheelstack_by_object_id(
+        dest_wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
+    )
+    if destination_wheelstack_data is None:
+        logger.error(f"Corrupted cell: row = {source_row}, col = {source_col}"
+                     f" in a {PRES_TYPE_GRID} with `objectId` = {source_id}."
+                     f" There's non-existing `wheelStack` placed on it = {wheelstack_id}")
+        raise HTTPException(
+            detail=f'Corrupted cell: row = {source_row}, col = {source_col}, inform someone to fix it',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    if destination_wheelstack_data['blocked']:
+        logger.error(f"Corrupted cell: row = {source_row}, col = {source_col}"
+                     f" in a {PRES_TYPE_GRID} with `objectId` = {source_id}."
+                     f" There's `blocked` `wheelStack` placed on it = {wheelstack_id}."
+                     f" And cell is marked as free.")
+        raise HTTPException(
+            detail=f'Source cell `wheelStack` blocked by other order = {destination_wheelstack_data['lastOrder']}',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    # Destination ---
+    # +++ wheelstacks merge check
+    #   + same batch +
+    source_batch: ObjectId = source_wheelstack_data['batchNumber']
+    destination_batch: ObjectId = destination_wheelstack_data['batchNumber']
+    if source_batch != destination_batch:
+        raise HTTPException(
+            detail=f'Target `wheelstack` wheels should be from the same `batch`. Have equal `batchNumber`s.',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    #   - same batch -
+    #  + destination has enough space +
+    source_wheels_count: int = len(source_wheelstack_data['wheels'])
+    destination_wheels_count: int = len(destination_wheelstack_data['wheels'])
+    destination_wheels_limit: int = destination_wheelstack_data['maxSize']
+    if (source_wheels_count + destination_wheels_count) > destination_wheels_limit:
+        raise HTTPException(
+            detail=f'Merged wheelstack should be able to contain all wheels from both `wheelstack`s',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    #  - destination has enough space -
+    # wheelstacks merge check ---
+    # +++ Order Creation
+    creation_time = await time_w_timezone()
+    order_data['source']['placementId'] = source_id
+    order_data['destination']['placementId'] = destination_id
+    order_data['createdAt'] = creation_time
+    order_data['lastUpdated'] = creation_time
+    order_data['affectedWheelStacks'] = {
+        'source': source_wheelstack_data['_id'],
+        'destination': destination_wheelstack_data['_id'],
+    }
+    order_data['affectedWheels'] = {
+        'source': source_wheelstack_data['wheels'],
+        'destination': destination_wheelstack_data['wheels'],
+    }
+    order_data['status'] = ORDER_STATUS_PENDING
+    async with await db.start_session() as session:
+        async with session.start_transaction():
+            created_order = await db_create_order(order_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session)
+            created_order_id: ObjectId = created_order.inserted_id
+            # Order Creation ---
+            # We need to change in SOURCE:
+            #  1. SourceCell should be `blocked` and `order` `objectId` placed in `blockedBy`.
+            #  2. SourceWheelstack should be `blocked` and `order` `objectId` placed in `blockedBy`
+            # +++ Source Change
+            new_source_cell_data = {
+                'wheelStack': source_wheelstack_data['_id'],
+                'blocked': True,
+                'blockedBy': created_order_id,
+            }
+            if PRES_TYPE_GRID == source_type:
+                record_change = False if source_id == destination_id else True
+                await db_update_grid_cell_data(
+                    source_id, source_row, source_col, new_source_cell_data,
+                    db, DB_PMK_NAME, CLN_GRID, session, record_change
+                )
+            elif PRES_TYPE_PLATFORM == source_type:
+                await db_update_platform_cell_data(
+                    source_id, source_row, source_col, new_source_cell_data,
+                    db, DB_PMK_NAME, CLN_BASE_PLATFORM, session, True
+                )
+            source_wheelstack_data['blocked'] = True
+            source_wheelstack_data['lastOrder'] = created_order_id
+            await db_update_wheelstack(
+                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            )
+            # Source Change ---
+            # We need to change in DESTINATION:
+            #  1. DestinationCell should be `blocked` and `order` `objectId` placed in `blockedBy`.
+            #  2. Destinatio wheelstack shoule be `blocked` and `order` placed
+            # +++ Destination change
+            destination_cell_data['blocked'] = True
+            destination_cell_data['blockedBy'] = created_order_id
+            await db_update_grid_cell_data(
+                destination_id, destination_row, destination_col,
+                destination_cell_data, db, DB_PMK_NAME, CLN_GRID, session, True
+            )
+            destination_wheelstack_data['blocked'] = True
+            destination_wheelstack_data['lastOrder'] = created_order_id
+            await db_update_wheelstack(
+                destination_wheelstack_data, destination_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
             )
             # Destination change ---
             return created_order_id
@@ -862,18 +1057,18 @@ async def orders_create_move_to_storage(db: AsyncIOMotorClient, order_data: dict
             detail=f'Source cell `wheelstack` is blocked by other order = {source_wheelstack_data['lastOrder']}',
             status_code=status.HTTP_403_FORBIDDEN,
         )
-    batch_number_data = await db_find_batch_number(
-        source_wheelstack_data['batchNumber'], db, DB_PMK_NAME, CLN_BATCH_NUMBERS,
-    )
-    if batch_number_data is None:
-        logger.warning(
-            f'{attempt_string}'
-            f'With non existing `batchNumber` = {source_wheelstack_data['batchNumber']}'
-        )
-        raise HTTPException(
-            detail=f'Provided `batchNumber`. Not Found.',
-            status_code=status.HTTP_404_NOT_FOUND,
-        )
+    # batch_number_data = await db_find_batch_number(
+    #     source_wheelstack_data['batchNumber'], db, DB_PMK_NAME, CLN_BATCH_NUMBERS,
+    # )
+    # if batch_number_data is None:
+    #     logger.warning(
+    #         f'{attempt_string}'
+    #         f'With non existing `batchNumber` = {source_wheelstack_data['batchNumber']}'
+    #     )
+    #     raise HTTPException(
+    #         detail=f'Provided `batchNumber`. Not Found.',
+    #         status_code=status.HTTP_404_NOT_FOUND,
+    #     )
     storage_id = await get_object_id(order_data['storage'])
     storage_data = await db_get_storage_by_object_id(
         storage_id, False, db, DB_PMK_NAME, CLN_STORAGES
@@ -961,8 +1156,8 @@ async def orders_create_move_from_storage_whole_stack(
             status_code=status.HTTP_403_FORBIDDEN,
         )
     storage_id: ObjectId = await get_object_id(order_data['source']['storageId'])
-    source_present = await db_storage_check_placed_wheelstack(
-        storage_id, source_wheelstack_id, wheelstack_data['batchNumber'],
+    source_present = await db_storage_get_placed_wheelstack(
+        storage_id, '', source_wheelstack_id,
         db, DB_PMK_NAME, CLN_STORAGES,
     )
     if source_present is None:
@@ -1062,8 +1257,8 @@ async def orders_create_move_to_pro_rej_from_storage(
             status_code=status.HTTP_403_FORBIDDEN,
         )
     storage_id: ObjectId = await get_object_id(order_data['source']['storageId'])
-    source_present = await db_storage_check_placed_wheelstack(
-        storage_id, source_wheelstack_id, source_wheelstack_data['batchNumber'],
+    source_present = await db_storage_get_placed_wheelstack(
+        storage_id, '', source_wheelstack_id,
         db, DB_PMK_NAME, CLN_STORAGES,
     )
     if source_present is None:
@@ -1177,8 +1372,8 @@ async def orders_create_move_from_storage_to_storage_whole_stack(
             status_code=status.HTTP_403_FORBIDDEN,
         )
     source_storage_id: ObjectId = await get_object_id(order_data['source']['storageId'])
-    source_present = await db_storage_check_placed_wheelstack(
-        source_storage_id, source_wheelstack_id, source_wheelstack_data['batchNumber'],
+    source_present = await db_storage_get_placed_wheelstack(
+        source_storage_id, '', source_wheelstack_id,
         db, DB_PMK_NAME, CLN_STORAGES,
     )
     if source_present is None:

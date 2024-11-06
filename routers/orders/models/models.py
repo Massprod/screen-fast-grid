@@ -4,7 +4,7 @@ from constants import (
     ORDER_MOVE_TOP_WHEEL,
     ORDER_MOVE_WHOLE_STACK,
     ORDER_MOVE_TO_LABORATORY,
-    ORDER_MERGE_WHEEL_STACKS,
+    ORDER_MERGE_WHEELSTACKS,
     ORDER_MOVE_TO_REJECTED,
     ORDER_MOVE_TO_PROCESSING,
     PRES_TYPE_PLATFORM,
@@ -19,7 +19,7 @@ from constants import (
 class OrderType(str, Enum):
     moveWholeStack = ORDER_MOVE_WHOLE_STACK
     moveTopWheel = ORDER_MOVE_TOP_WHEEL
-    mergeWheelStacks = ORDER_MERGE_WHEEL_STACKS
+    mergeWheelStacks = ORDER_MERGE_WHEELSTACKS
     moveToStorage = ORDER_MOVE_TO_STORAGE
 
 

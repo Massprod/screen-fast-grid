@@ -12,7 +12,7 @@ PT_STORAGE = 'storage'
 ORDER_MOVE_WHOLE_STACK: str = 'moveWholeStack'
 ORDER_MOVE_TOP_WHEEL: str = 'moveTopWheel'
 ORDER_MOVE_TO_LABORATORY: str = 'moveToLaboratory'
-ORDER_MERGE_WHEEL_STACKS: str = 'mergeWheelstacks'
+ORDER_MERGE_WHEELSTACKS: str = 'mergeWheelStacks'
 ORDER_MOVE_TO_PROCESSING: str = 'moveToProcessing'
 ORDER_MOVE_TO_REJECTED: str = 'moveToRejected'
 ORDER_MOVE_TO_STORAGE: str = 'moveToStorage'
@@ -77,6 +77,7 @@ PS_GRID: str = 'grid'
 PS_BASE_PLATFORM: str = 'basePlatform'
 PS_REJECTED: str = 'rejected'
 PS_STORAGE: str = 'storage'
+PS_DECONSTRUCTED: str = 'deconstructed'
 OUT_STATUSES: list[str] = [PS_LABORATORY, PS_SHIPPED, PS_REJECTED]
 
 # WHEELSTACKS LIMIT

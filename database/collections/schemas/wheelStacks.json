@@ -79,7 +79,7 @@
     },
     "status": {
       "bsonType": "string",
-      "enum": ["laboratory", "shipped", "grid", "basePlatform", "rejected", "storage"],
+      "enum": ["laboratory", "shipped", "grid", "basePlatform", "rejected", "storage", "deconstructed"],
       "description": "must be a string and is required"
     }
   },

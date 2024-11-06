@@ -14,6 +14,7 @@ from routers.orders.crud import (
     db_get_order_by_object_id,
 )
 from routers.orders.orders_completion import (
+    orders_complete_merge_wheelstacks,
     orders_complete_move_wholestack,
     orders_complete_move_to_rejected,
     orders_complete_move_to_processing,
@@ -25,6 +26,7 @@ from routers.orders.orders_completion import (
 )
 from routers.orders.orders_cancelation import (
     orders_cancel_basic_extra_element_moves,
+    orders_cancel_merge_wheelstacks,
     orders_cancel_move_wholestack,
     orders_cancel_move_to_storage,
     orders_cancel_move_from_storage_to_grid,
@@ -40,6 +42,7 @@ from routers.orders.models.models import (
     CreateMoveFromStorageRequest,
 )
 from routers.orders.orders_creation import (
+    orders_create_merge_wheelstacks,
     orders_create_move_whole_wheelstack,
     orders_create_move_to_laboratory,
     orders_create_move_to_processing,
@@ -52,6 +55,7 @@ from routers.orders.orders_creation import (
     orders_create_move_from_storage_to_lab,
 )
 from constants import (
+    ORDER_MERGE_WHEELSTACKS,
     ORDER_MOVE_WHOLE_STACK,
     ORDER_MOVE_TO_LABORATORY,
     ORDER_MOVE_TO_PROCESSING,
@@ -178,6 +182,9 @@ async def route_post_create_order_move(
     if ORDER_MOVE_WHOLE_STACK == data['orderType']:
         logger.info(f'Creating order of type = `{ORDER_MOVE_WHOLE_STACK}`')
         created_order_id = await orders_create_move_whole_wheelstack(db, data)
+    elif ORDER_MERGE_WHEELSTACKS == data['orderType']:
+        logger.info(f'Creating order of type = `{ORDER_MERGE_WHEELSTACKS}`')
+        created_order_id = await orders_create_merge_wheelstacks(db, data)
     # + BG record +
     source_id = await get_object_id(data['source']['placementId'])
     source_type = data['source']['placementType']
@@ -349,6 +356,7 @@ async def route_post_create_order_move_to_storage(
 ):
     data = order_data.model_dump()
     created_order_id = await orders_create_move_to_storage(db, data)
+    # TODO: What about merge in storages?
     # + BG record +
     source_id = await get_object_id(data['source']['placementId'])
     source_type = data['source']['placementType']
@@ -391,6 +399,7 @@ async def route_post_create_order_move_from_storage(
         created_order_id = await orders_create_move_from_storage_to_storage_whole_stack(db, data)
     elif ORDER_MOVE_TO_LABORATORY == data['orderType']:
         created_order_id = await orders_create_move_from_storage_to_lab(db, data)
+    # TODO: What about merge in storages?
     # + BG record +
     source_id = await get_object_id(data['source']['storageId'])
     source_type = PS_STORAGE
@@ -452,6 +461,9 @@ async def route_post_cancel_order(
             result = await orders_cancel_move_to_storage(
                 order_data, cancellation_reason, db
             )
+    elif order_data['orderType'] == ORDER_MERGE_WHEELSTACKS:
+        # TODO: What about storages?
+        result = await orders_cancel_merge_wheelstacks(order_data, cancellation_reason, db)
     logger.info(f'Order canceled and moved to `canceledOrders` with `_id` = {result}')
     # + BG record +
     source_id = order_data['source']['placementId']
@@ -514,6 +526,9 @@ async def route_post_complete_order(
             result = await orders_complete_move_from_storage_to_storage(order_data, db)
         else:
             result = await orders_complete_move_to_storage(order_data, db)
+    elif order_data['orderType'] == ORDER_MERGE_WHEELSTACKS:
+        # TODO: What about storages?
+        result = await orders_complete_merge_wheelstacks(order_data, db)
     logger.info(log_record + str(result))
     # + BG record +
     source_id = order_data['source']['placementId']

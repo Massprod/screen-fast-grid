@@ -1,3 +1,4 @@
+import asyncio
 from bson import ObjectId
 from loguru import logger
 from fastapi import HTTPException, status
@@ -13,6 +14,7 @@ from constants import (DB_PMK_NAME, CLN_ACTIVE_ORDERS, CLN_GRID, CLN_WHEELSTACKS
                        ORDER_STATUS_CANCELED, CLN_CANCELED_ORDERS, PRES_TYPE_GRID,
                        PRES_TYPE_PLATFORM, CLN_BASE_PLATFORM, PS_BASE_PLATFORM, PS_GRID)
 from utility.utilities import time_w_timezone
+from routers.orders.orders_completion import update_placement_cell
 
 
 async def orders_cancel_basic_extra_element_moves(
@@ -456,4 +458,86 @@ async def orders_cancel_move_from_storage_to_storage(
             canceled_order_id = await db_create_order(
                 order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS, session,
             )
+            return canceled_order_id.inserted_id
+
+
+async def orders_cancel_merge_wheelstacks(
+        order_data: dict,
+        cancellation_reason: str,
+        db: AsyncIOMotorClient,
+) -> ObjectId:
+    cancellation_time = await time_w_timezone()
+    order_data['status'] = ORDER_STATUS_CANCELED
+    order_data['cancellationReason'] = cancellation_reason
+    order_data['canceledAt'] = cancellation_time
+    order_data['lastUpdated'] = cancellation_time
+    source_wheelstack_id: ObjectId = order_data['affectedWheelStacks']['source']
+    destination_wheelstack_id: ObjectId = order_data['affectedWheelStacks']['destination']
+    source_task = db_find_wheelstack_by_object_id(
+        source_wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
+    )
+    dest_task = db_find_wheelstack_by_object_id(
+        destination_wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
+    )
+    data_tasks = [source_task, dest_task]
+    data_result = await asyncio.gather(*data_tasks)
+    # + SOURCE + 
+    source_wheelstack_data = data_result[0]
+    if source_wheelstack_data is None:
+        raise HTTPException(
+            detail='source wheelstack used in order doesnt exist == corrupted order',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    source_wheelstack_data['blocked'] = False
+    source_wheelstack_data['lastOrder'] = order_data['_id']
+    # - SOURCE -
+    # + DESTINATION +
+    destination_wheelstack_data = data_result[1]
+    if destination_wheelstack_data is None:
+        raise HTTPException(
+            detail='destination wheelstack used in order doesnt exist == corrupted order',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    destination_wheelstack_data['blocked'] = False
+    destination_wheelstack_data['lastOrder'] = order_data['_id']
+    # - DESTINATION -
+    source_placement_id: ObjectId = order_data['source']['placementId']
+    destination_placement_id: ObjectId = order_data['destination']['placementId']
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            session_tasks = []
+            record_both: bool = True if source_placement_id != destination_placement_id else False
+            unblock_cell_data = {
+                'blocked': False,
+                'blockedBy': None
+            }
+            session_tasks.append(
+                update_placement_cell(
+                    order_data['source'], unblock_cell_data, db, session, record_both
+            ))
+            session_tasks.append(
+                update_placement_cell(
+                    order_data['destination'], unblock_cell_data, db, session, True
+                )
+            )
+            session_tasks.append(
+                db_delete_order(
+                    order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            ))
+            session_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_id,
+                    db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            ))
+            session_tasks.append(
+                db_update_wheelstack(
+                    destination_wheelstack_data, destination_wheelstack_id,
+                    db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            ))
+            session_tasks.append(
+                db_create_order(
+                    order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS, session
+            ))
+            session_results = await asyncio.gather(*session_tasks)
+            canceled_order_id = session_results[-1]
             return canceled_order_id.inserted_id
