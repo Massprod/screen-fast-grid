@@ -409,9 +409,10 @@ async def db_update_platform_cell_data(
     }
     update = {
         '$set': {
-            f'rows.{row}.columns.{col}.wheelStack': new_data['wheelStack'],
-            f'rows.{row}.columns.{col}.blocked': new_data['blocked'],
-            f'rows.{row}.columns.{col}.blockedBy': new_data['blockedBy'],
+            f'rows.{row}.columns.{col}.{key}': value for key, value in new_data.items()
+            # f'rows.{row}.columns.{col}.wheelStack': new_data['wheelStack'],
+            # f'rows.{row}.columns.{col}.blocked': new_data['blocked'],
+            # f'rows.{row}.columns.{col}.blockedBy': new_data['blockedBy'],
         }
     }
     if record_change:
