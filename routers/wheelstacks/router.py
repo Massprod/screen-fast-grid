@@ -525,7 +525,7 @@ async def route_patch_deconstruct_wheelstack(
             # 2. Setting all wheel statuses to `unplaced`
             clear_wheel_data = {
                 'status': WH_UNPLACED,
-                'wheelstack': None
+                'wheelStack': None
             }
             for wheel_object_id in exists['wheels']:
                 transaction_tasks.append(
