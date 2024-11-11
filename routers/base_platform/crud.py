@@ -363,6 +363,8 @@ async def clear_platform_cell(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
+        session: AsyncIOMotorClientSession = None,
+        record_change: bool = True,
 ):
     collection = await get_db_collection(db, db_name, db_collection)
     query = {
@@ -376,11 +378,12 @@ async def clear_platform_cell(
             f'rows.{row}.columns.{column}.wheelStack': None,
             f'rows.{row}.columns.{column}.blocked': False,
             f'rows.{row}.columns.{column}.blockedBy': None,
-            'lastChange': await time_w_timezone(),
         }
     }
+    if record_change:
+        update['$set']['lastChange'] = await time_w_timezone()
     try:
-        result = await collection.update_one(query, update)
+        result = await collection.update_one(query, update, session=session)
         return result
     except PyMongoError as error:
         logger.error(f'Error while clearing `cell` {row}|{column} in {db_collection}: {error}')
