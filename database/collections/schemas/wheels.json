@@ -20,7 +20,7 @@
     },
     "status": {
       "bsonType": "string",
-      "enum": ["laboratory", "shipped", "grid", "basePlatform", "rejected", "storage"],
+      "enum": ["laboratory", "shipped", "grid", "basePlatform", "rejected", "storage", "unplaced"],
       "description": "must be a string and is required"
     },
     "transferData": {

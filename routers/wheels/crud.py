@@ -150,20 +150,25 @@ async def db_delete_wheel(
 
 
 async def db_get_all_wheels(
-        batch_number: str,
+        filters: dict,
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
 ):
     collection = await get_db_collection(db, db_name, db_collection)
     db_log_data = await log_db_record(db_name, db_collection)
+    filter_record: list[str] = []
     query = {}
-    if batch_number:
-        query = {
-            'batchNumber': batch_number,
-        }
+    for key, value in filters.items():
+        if value:
+            filter_record.append(
+                f'`{key}` = {value}'
+            )
+            query[key] = value
+    
+    if filter_record:
         logger.info(
-            f'Searching `wheels` with `batchNumber` = {batch_number}' + db_log_data
+            f'Searching `wheels` with filters: {'|'.join(filter_record)} | {db_log_data}'
         )
     else:
         logger.info(

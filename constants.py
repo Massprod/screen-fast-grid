@@ -70,6 +70,15 @@ MSG_TESTS_FAILED = "TESTS_FAILED"
 # FOLDERS
 FLD_BASIC_SCHEMAS: str = 'database/collections/schemas'
 
+# WHEEL STATUSES 
+WH_LABORATORY = 'laboratory'
+WH_SHIPPED = 'shipped'
+WH_GRID = 'grid'
+WH_PLATFORM = 'basePlatform'
+WH_REJECTED = 'rejected'
+WH_STORAGE = 'storage'
+WH_UNPLACED = 'unplaced'
+
 # PLACEMENT STATUSES
 PS_LABORATORY: str = 'laboratory'
 PS_SHIPPED: str = 'shipped'

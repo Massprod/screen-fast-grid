@@ -8,7 +8,7 @@ from ..base_platform.crud import db_update_platform_last_change
 from auth.jwt_validation import get_role_verification_dependency
 from ..batch_numbers.crud import db_find_batch_number, db_create_batch_number
 from fastapi import APIRouter, Depends, HTTPException, status, Path, Body, Query
-from utility.utilities import get_object_id, convert_object_id_and_datetime_to_str
+from utility.utilities import get_object_id, convert_object_id_and_datetime_to_str, async_convert_object_id_and_datetime_to_str
 from routers.wheelstacks.crud import db_find_wheelstack_by_object_id, db_update_wheelstack
 from constants import (
     DB_PMK_NAME,
@@ -49,14 +49,18 @@ router = APIRouter()
 )
 async def route_get_all_wheels(
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+        wheel_status: str = Query('',
+                                  description='Filter wheels on `status` field'),
         batch_number: str = Query('',
                                   description='Select all with given `batchNumber`'),
         token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
-    result = await db_get_all_wheels(batch_number, db, DB_PMK_NAME, CLN_WHEELS)
-    cor_data: dict = {}
-    for wheel in result:
-        cor_data[str(wheel['_id'])] = convert_object_id_and_datetime_to_str(wheel)
+    filters = {
+        'status': wheel_status,
+        'batchNumber': batch_number,
+    }
+    result = await db_get_all_wheels(filters, db, DB_PMK_NAME, CLN_WHEELS)
+    cor_data = await async_convert_object_id_and_datetime_to_str(result)
     return JSONResponse(
         content=cor_data,
         status_code=status.HTTP_200_OK,
