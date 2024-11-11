@@ -3,9 +3,9 @@ from bson import ObjectId
 from database.mongo_connection import mongo_client
 from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi.responses import JSONResponse, Response
-from routers.grid.crud import place_wheelstack_in_grid
+from routers.grid.crud import clear_grid_cell, place_wheelstack_in_grid
 from motor.motor_asyncio import AsyncIOMotorClientSession
-from routers.storages.crud import db_storage_place_wheelstack
+from routers.storages.crud import db_storage_delete_placed_wheelstack, db_storage_place_wheelstack
 from auth.jwt_validation import get_role_verification_dependency
 from routers.history.history_actions import background_history_record
 from routers.wheels.crud import db_find_wheel_by_object_id, db_update_wheel
@@ -13,7 +13,7 @@ from routers.batch_numbers.crud import db_find_batch_number, db_create_batch_num
 from utility.utilities import get_object_id, time_w_timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Path, Body, BackgroundTasks
 from .models.models import CreateWheelStackRequest, ForceUpdateWheelStackRequest, WheelsData
-from routers.base_platform.crud import cell_exist, place_wheelstack_in_platform, get_platform_by_object_id
+from routers.base_platform.crud import cell_exist, clear_platform_cell, place_wheelstack_in_platform, get_platform_by_object_id
 from constants import (
     CLN_GRID,
     CLN_STORAGES,
@@ -26,6 +26,7 @@ from constants import (
     ADMIN_ACCESS_ROLES,
     CELERY_ACTION_ROLES,
     BASIC_PAGE_ACTION_ROLES,
+    PS_DECONSTRUCTED,
     PT_BASE_PLATFORM,
     PT_GRID,
     PT_STORAGE,
@@ -364,6 +365,29 @@ async def place_wheelstack_filter(
         )
 
 
+async def clear_wheelstack_place_filter(
+        wheelstack_data: dict,
+        db: AsyncIOMotorClient,
+        session: AsyncIOMotorClientSession,
+):
+    placement_id: ObjectId = wheelstack_data['placement']['placementId']
+    placement_type: str = wheelstack_data['placement']['type']
+    placement_row: str = wheelstack_data['rowPlacement']
+    placement_col: str = wheelstack_data['colPlacement']
+    if PT_STORAGE == placement_type:
+        await db_storage_delete_placed_wheelstack(
+            placement_id, '', wheelstack_data['_id'], db, DB_PMK_NAME, CLN_STORAGES, session, True   
+        )
+    elif PT_GRID == placement_type:
+        await clear_grid_cell(
+            placement_id, placement_row, placement_col, db, DB_PMK_NAME, CLN_GRID, session, True
+        )
+    elif PT_BASE_PLATFORM == placement_type:
+        await clear_platform_cell(
+            placement_id, placement_row, placement_col, db, DB_PMK_NAME, CLN_BASE_PLATFORM, session, True
+        )
+# ---
+
 
 @router.patch(
     path='/reconstruct/{target_object_id}',
@@ -426,10 +450,10 @@ async def route_patch_rebuild_wheelstack(
         if wheel not in new_wheels:
             unplaced_wheels.add(wheel)
     # 5. Update wheelstack + Update unplaced wheels + Update placement change time
+    transaction_tasks = []
     async with (await db.start_session()) as session:
         async with session.start_transaction():
             # 5.1 Update placed
-            transaction_tasks = []
             for index, wheel in enumerate(new_wheels_data):
                 new_wheel_data = {
                     'wheelStack': {
@@ -463,6 +487,63 @@ async def route_patch_rebuild_wheelstack(
             transaction_tasks.append(
                 place_wheelstack_filter(
                     exists, db, session
+                )
+            )
+            await asyncio.gather(*transaction_tasks)
+    return Response(status_code=status.HTTP_200_OK)
+
+
+@router.patch(
+    path='/deconstruct/{target_object_id}',
+    description='Deconstruct `wheelstacks` => changing all of its `wheel` statuses to `unplaced` and removing it from current placement',
+    name='Deconstruct',
+)
+async def route_patch_deconstruct_wheelstack(
+    target_object_id: str = Path(...,
+                                 description='`ObjectId` of the targeted `wheelstack`'),
+    db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+    token_data: dict = get_role_verification_dependency(BASIC_PAGE_ACTION_ROLES),
+):
+    wheelstack_object_id: ObjectId = await get_object_id(target_object_id)
+    # 1. Wheelstack exists and not blocked
+    exists: dict = await db_find_wheelstack_by_object_id(
+        wheelstack_object_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
+    )
+    if exists is None:
+        raise HTTPException(
+            detail=f'`wheelstack` with provided `objectId` = {wheelstack_object_id}. Not Found',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    if exists['blocked']:
+        raise HTTPException(
+            detail=f'`wheelstack` with provided `objectId` = {wheelstack_object_id}. Cant be altered while its blocked.',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    transaction_tasks = []
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            # 2. Setting all wheel statuses to `unplaced`
+            clear_wheel_data = {
+                'status': WH_UNPLACED,
+                'wheelstack': None
+            }
+            for wheel_object_id in exists['wheels']:
+                transaction_tasks.append(
+                    db_update_wheel(
+                        wheel_object_id, clear_wheel_data, db, DB_PMK_NAME, CLN_WHEELS, session
+                    )
+                )
+            # 3. Clearing current placement cell
+            transaction_tasks.append(
+                clear_wheelstack_place_filter(exists, db, session)
+            )
+            # 4. Setting `wheelstack` status to `deconstructed`
+            #   Only changing status, because it should never be used with that status set.
+            #   And we will still have LastState data of this wheelstack.
+            exists['status'] = PS_DECONSTRUCTED
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    exists, exists['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session, True
                 )
             )
             await asyncio.gather(*transaction_tasks)
