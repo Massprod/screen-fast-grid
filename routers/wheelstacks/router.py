@@ -1,16 +1,22 @@
+import asyncio
 from bson import ObjectId
 from database.mongo_connection import mongo_client
 from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi.responses import JSONResponse, Response
-from utility.utilities import get_object_id, time_w_timezone
+from routers.grid.crud import place_wheelstack_in_grid
+from motor.motor_asyncio import AsyncIOMotorClientSession
+from routers.storages.crud import db_storage_place_wheelstack
 from auth.jwt_validation import get_role_verification_dependency
 from routers.history.history_actions import background_history_record
 from routers.wheels.crud import db_find_wheel_by_object_id, db_update_wheel
-from .models.models import CreateWheelStackRequest, ForceUpdateWheelStackRequest
 from routers.batch_numbers.crud import db_find_batch_number, db_create_batch_number
+from utility.utilities import get_object_id, time_w_timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Path, Body, BackgroundTasks
+from .models.models import CreateWheelStackRequest, ForceUpdateWheelStackRequest, WheelsData
 from routers.base_platform.crud import cell_exist, place_wheelstack_in_platform, get_platform_by_object_id
 from constants import (
+    CLN_GRID,
+    CLN_STORAGES,
     DB_PMK_NAME,
     CLN_WHEELSTACKS,
     CLN_BASE_PLATFORM,
@@ -19,6 +25,11 @@ from constants import (
     BASIC_PAGE_VIEW_ROLES,
     ADMIN_ACCESS_ROLES,
     CELERY_ACTION_ROLES,
+    BASIC_PAGE_ACTION_ROLES,
+    PT_BASE_PLATFORM,
+    PT_GRID,
+    PT_STORAGE,
+    WH_UNPLACED,
 )
 from .crud import (
     db_find_all_wheelstacks,
@@ -318,7 +329,7 @@ async def route_get_last_change(
     res = await db_get_wheelstack_last_change(wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS)
     if res is None:
         raise HTTPException(
-            detail=f'grid with `objectId` = {wheelstack_object_id}. Not Found',
+            detail=f'`wheelstack` with provided `objectId` = {wheelstack_object_id}. Not Found',
             status_code=status.HTTP_404_NOT_FOUND,
         )
     res['_id'] = str(res['_id'])
@@ -327,3 +338,132 @@ async def route_get_last_change(
         content=res,
         status_code=status.HTTP_200_OK,
     )
+
+
+# TODO: move to normal place :)
+async def place_wheelstack_filter(
+        wheelstack_data: dict,
+        db: AsyncIOMotorClient,
+        session: AsyncIOMotorClientSession,
+):
+    placement_id: ObjectId = wheelstack_data['placement']['placementId']
+    placement_type: str = wheelstack_data['placement']['type']
+    placement_row: str = wheelstack_data['rowPlacement']
+    placement_col: str = wheelstack_data['colPlacement']
+    if PT_BASE_PLATFORM == placement_type:
+        await place_wheelstack_in_platform(
+            placement_id, wheelstack_data['_id'], placement_row, placement_col, db, DB_PMK_NAME, CLN_BASE_PLATFORM, session
+        )
+    elif PT_GRID == placement_type:
+        await place_wheelstack_in_grid(
+            placement_id, wheelstack_data['_id'], placement_row, placement_col, db, DB_PMK_NAME, CLN_GRID, session 
+        )
+    elif PT_STORAGE == placement_type:
+        await db_storage_place_wheelstack(
+            placement_id, '', wheelstack_data['_id'], db, DB_PMK_NAME, CLN_STORAGES, session, True
+        )
+
+
+
+@router.patch(
+    path='/reconstruct/{target_object_id}',
+    description='Reconstruct `wheelstack` with another wheels. Setting changed `wheel`s to `unplaced`',
+    name='Reconstruct',
+)
+async def route_patch_rebuild_wheelstack(
+    new_wheels_data: WheelsData = Body(...,
+                                       description='New reconstructed wheels data'),
+    target_object_id: str = Path(...,
+                                     description='`ObjectId` of the `wheelstack` to use'),
+    db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
+    token_data: dict = get_role_verification_dependency(BASIC_PAGE_ACTION_ROLES),
+):
+    new_wheels_data = new_wheels_data.model_dump()['wheels']
+    new_wheels: set[ObjectId] = set()
+    # 1. Correct `ObjectId`s
+    for index, wheel in enumerate(new_wheels_data):
+        wheel_object_id: ObjectId = await get_object_id(wheel)
+        new_wheels_data[index] = wheel_object_id
+        new_wheels.add(wheel_object_id)
+    # 2. Wheelstack exists
+    wheelstack_id: ObjectId = await get_object_id(target_object_id)
+    exists: dict = await db_find_wheelstack_by_object_id(
+        wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
+    )
+    if exists is None:
+        raise HTTPException(
+            detail=f'`wheelstack` with provided `objectId` = {wheelstack_id}. Not Found',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    if exists['blocked']:
+        raise HTTPException(
+            detail=f'`wheelstack` with provided `objectId` = {wheelstack_id}. Cant be altered while its blocked.',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    wheelstack_batch: str = exists['batchNumber']
+    # 3. All wheels exists + correct batch.
+    async def check_wheel(wheel_object_id: ObjectId):
+        get_wheel = await db_find_wheel_by_object_id(wheel, db, DB_PMK_NAME, CLN_WHEELS)
+        if get_wheel is None:
+            raise HTTPException(
+                detail=f'One of provided wheels doesnt exist => {wheel_object_id}',
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        if wheelstack_batch != get_wheel['batchNumber']:
+            raise HTTPException(
+                detail=f'One of provided wheels doesnt have correct wheelstack `batchNumber` => {wheel_object_id}',
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
+
+    get_wheel_tasks = []
+    for wheel in new_wheels:
+        get_wheel_tasks.append(check_wheel(wheel))
+    get_wheel_results = await asyncio.gather(*get_wheel_tasks)
+    # 4. Check for unplaced wheels. Wheels which is not present in new_wheels => goes to unplaced.
+    current_wheels: set[ObjectId] = exists['wheels']
+    unplaced_wheels: set[ObjectId] = set()
+    for wheel in current_wheels:
+        if wheel not in new_wheels:
+            unplaced_wheels.add(wheel)
+    # 5. Update wheelstack + Update unplaced wheels + Update placement change time
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            # 5.1 Update placed
+            transaction_tasks = []
+            for index, wheel in enumerate(new_wheels_data):
+                new_wheel_data = {
+                    'wheelStack': {
+                        'wheelStackId': exists['_id'],
+                        'wheelStackPosition': index,
+                    },
+                    'status': exists['status']
+                }
+                transaction_tasks.append(
+                    db_update_wheel(
+                        wheel, new_wheel_data, db, DB_PMK_NAME, CLN_WHEELS, session
+                ))
+            # 5.2 Update unplaced
+            for wheel in unplaced_wheels:
+                new_wheel_data = {
+                    'wheelStack': None,
+                    'status': WH_UNPLACED
+                }
+                transaction_tasks.append(
+                    db_update_wheel(
+                        wheel, new_wheel_data, db, DB_PMK_NAME, CLN_WHEELS, session
+                ))
+            # 5.3 Update wheelstack
+            exists['wheels'] = new_wheels_data
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    exists, exists['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session, True
+                )
+            )
+            # 5.4 Update placement
+            transaction_tasks.append(
+                place_wheelstack_filter(
+                    exists, db, session
+                )
+            )
+            await asyncio.gather(*transaction_tasks)
+    return Response(status_code=status.HTTP_200_OK)

@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Optional
 from pydantic import BaseModel, Field, conlist, field_validator
-from constants import (PS_BASE_PLATFORM, PS_GRID,
+from constants import (PS_BASE_PLATFORM, PS_DECONSTRUCTED, PS_GRID,
                        PS_SHIPPED, PS_LABORATORY,
                        PS_REJECTED, PRES_TYPE_GRID, PS_STORAGE,
                        PRES_TYPE_PLATFORM, WS_MAX_WHEELS, WS_MIN_WHEELS)
@@ -14,6 +14,7 @@ class WheelStackStatus(str, Enum):
     laboratory = PS_LABORATORY
     rejected = PS_REJECTED
     storage = PS_STORAGE
+    deconstructed = PS_DECONSTRUCTED
 
 
 # We should only allow creation on the `basePlatform`
@@ -25,6 +26,7 @@ class CreatePlacement(str, Enum):
 class AllowedPlacement(str, Enum):
     grid = PRES_TYPE_GRID
     basePlatform = PRES_TYPE_PLATFORM
+    storage = PS_STORAGE
 
 
 # def create_enum_with_empty_placeholder(name, values):
@@ -161,7 +163,9 @@ class ForceUpdateWheelStackRequest(BaseModel):
                                                  f"`{PS_GRID}` - currently positioned in our grid\n"
                                                  f"`{PS_BASE_PLATFORM}` - currently positioned on platform (before "
                                                  "grid)\n"
-                                                 f"`{PS_REJECTED}` - marked as rejected and removed")
+                                                 f"`{PS_REJECTED}` - marked as rejected and removed"
+                                                 f"`{PS_DECONSTRUCTED}` - marked as deconstructed")
+
 
     @field_validator('wheels')
     def validate_uniqueness(cls, wheels: list[str]):
@@ -185,3 +189,20 @@ class ForceUpdateWheelStackRequest(BaseModel):
             }
         }
         use_enum_values = True  # using values instead of Name
+
+
+class WheelsData(BaseModel):
+    wheels: conlist(
+        str,
+        min_length=WS_MIN_WHEELS + 1,
+        max_length=WS_MAX_WHEELS
+    ) = Field(default_factory=list,
+              description="list with all the `wheel`'s placed in this `wheelStack`."
+                          " We're using array because we should be able to easily maintain order."
+                          " And our wheels placed like 0 -> 5 - indexes, from bottom -> top.")
+
+    @field_validator('wheels')
+    def validate_uniqueness(cls, wheels: list[str]):
+        if len(wheels) != len(set(wheels)):
+            raise ValueError('Each `objectId` of the `wheels` should be unique.')
+        return wheels
