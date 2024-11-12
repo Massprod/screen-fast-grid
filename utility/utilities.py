@@ -4,8 +4,10 @@ from bson import ObjectId
 from pymongo import errors
 from bson.errors import InvalidId
 from datetime import datetime, timezone
+from pymongo.errors import PyMongoError
 from fastapi import HTTPException, status
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
+
 
 
 async def get_object_id(
@@ -151,3 +153,33 @@ async def async_convert_object_id_and_datetime_to_str(doc):
         return doc.isoformat()
     else:
         return doc
+
+
+async def db_execute_free_find_one_query(
+        query: dict,
+        project: dict,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+        session: AsyncIOMotorClientSession = None,
+):
+    db_info = await log_db_record(db_name, db_collection)
+    logger.info(
+        f'Attempt to search `wheel`s with free query' + db_info
+    )
+    collection = await get_db_collection(db, db_name, db_collection)
+    try:
+        result = await collection.find_one(query, project, session=session)
+        logger.info(
+            f'Succesfully executed free query on {db_collection}'
+        )
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        logger.error(
+            f'Error while executing free query on collection => {db_collection}' + db_info + error_extra
+        )
+        raise HTTPException(
+            detail=f'Error while executing free query',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
