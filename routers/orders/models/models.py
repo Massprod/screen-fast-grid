@@ -1,5 +1,5 @@
 from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from constants import (
     ORDER_MOVE_TOP_WHEEL,
     ORDER_MOVE_WHOLE_STACK,
@@ -194,8 +194,16 @@ class CreateMoveToStorageRequest(BaseModel):
                                   description='Optional description of the `order`')
     source: MoveToStorageSourceField = Field(...,
                                              description='all the data to identify and validate `source` as correct one')
-    storage: str = Field(...,
+    storage: str = Field(None,
                          description='`ObjectId` of the storage to place into')
+    storageName: str = Field(None,
+                             description='`name` of the storage to place into')
+    
+    @model_validator(mode="before")
+    def check_at_least_one_present(cls, values):
+        if not values.get('storage') and not values.get('storageName'):
+            raise ValueError("At least one of `storage` or `storageName` must be provided.")
+        return values
 
 
 class FromStorageOrderTypes(str, Enum):

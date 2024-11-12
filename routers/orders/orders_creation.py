@@ -6,7 +6,7 @@ from fastapi import HTTPException, status
 from routers.orders.crud import db_create_order
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from routers.storages.crud import db_get_storage_by_object_id, db_storage_get_placed_wheelstack
+from routers.storages.crud import db_get_storage_by_name, db_get_storage_by_object_id, db_storage_get_placed_wheelstack
 from utility.utilities import get_object_id, time_w_timezone, orders_creation_attempt_string, \
     orders_corrupted_cell_non_existing_wheelstack, orders_corrupted_cell_blocked_wheelstack
 from routers.grid.crud import (db_get_grid_cell_data, db_update_grid_cell_data,
@@ -1069,19 +1069,27 @@ async def orders_create_move_to_storage(db: AsyncIOMotorClient, order_data: dict
     #         detail=f'Provided `batchNumber`. Not Found.',
     #         status_code=status.HTTP_404_NOT_FOUND,
     #     )
-    storage_id = await get_object_id(order_data['storage'])
-    storage_data = await db_get_storage_by_object_id(
-        storage_id, False, db, DB_PMK_NAME, CLN_STORAGES
-    )
+    storage_data = None
+    if order_data.get('storageName'):
+        storage_name = order_data['storageName']
+        storage_data = await db_get_storage_by_name(
+            storage_name, False, db, DB_PMK_NAME, CLN_STORAGES
+        )
+    elif order_data.get('storage'):
+        storage_id = await get_object_id(order_data['storage'])
+        storage_data = await db_get_storage_by_object_id(
+            storage_id, False, db, DB_PMK_NAME, CLN_STORAGES
+        )
     if storage_data is None:
         logger.warning(
             f'{attempt_string}'
-            f'With non existing `storage` = {storage_id}'
+            f'With non existing `storage` = {order_data.get('storage') or order_data.get('storageName')}'
         )
         raise HTTPException(
             detail=f'Provided `storage`. Not Found.',
             status_code=status.HTTP_404_NOT_FOUND,
         )
+    storage_id = storage_data['_id']
     creation_time = await time_w_timezone()
     order_data['source']['placementId'] = source_id
     new_order_data = {
