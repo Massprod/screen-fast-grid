@@ -141,10 +141,10 @@ async def prepare_db():
         if preset_exists is None:
             preset_data = await preset_creation()
             logger.info(f'Completed creation of data for `presetName` => {preset_name}')
-        await add_new_preset(preset_data, db, DB_PMK_NAME, CLN_PRESETS)
-        preset_exists = await get_preset_by_name(
-            preset_name, db, DB_PMK_NAME, CLN_PRESETS
-        )
+            await add_new_preset(preset_data, db, DB_PMK_NAME, CLN_PRESETS)
+            preset_exists = await get_preset_by_name(
+                preset_name, db, DB_PMK_NAME, CLN_PRESETS
+            )
         logger.info(f'Completed creation of preset with `presetName` => {preset_name}')
         return preset_exists
 
