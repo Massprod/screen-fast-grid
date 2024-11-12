@@ -395,6 +395,7 @@ async def clear_wheelstack_place_filter(
     name='Reconstruct',
 )
 async def route_patch_rebuild_wheelstack(
+    background_tasks: BackgroundTasks,
     new_wheels_data: WheelsData = Body(...,
                                        description='New reconstructed wheels data'),
     target_object_id: str = Path(...,
@@ -490,6 +491,11 @@ async def route_patch_rebuild_wheelstack(
                 )
             )
             await asyncio.gather(*transaction_tasks)
+    # + BG record +
+    source_id = await get_object_id(exists['placement']['placementId'])
+    source_type = exists['placement']['type']
+    background_tasks.add_task(background_history_record, source_id, source_type, db)
+    # - BG record -
     return Response(status_code=status.HTTP_200_OK)
 
 
@@ -499,6 +505,7 @@ async def route_patch_rebuild_wheelstack(
     name='Deconstruct',
 )
 async def route_patch_deconstruct_wheelstack(
+    background_tasks: BackgroundTasks,
     target_object_id: str = Path(...,
                                  description='`ObjectId` of the targeted `wheelstack`'),
     db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
@@ -547,4 +554,9 @@ async def route_patch_deconstruct_wheelstack(
                 )
             )
             await asyncio.gather(*transaction_tasks)
+    # + BG record +
+    source_id = await get_object_id(exists['placement']['placementId'])
+    source_type = exists['placement']['type']
+    background_tasks.add_task(background_history_record, source_id, source_type, db)
+    # - BG record -
     return Response(status_code=status.HTTP_200_OK)
