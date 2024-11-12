@@ -150,7 +150,9 @@ async def db_storage_place_wheelstack(
         }
     }
     if record_change:
-        update['$set']['lastChange'] = await time_w_timezone()
+        update['$set'] = {
+            'lastChange': await time_w_timezone()
+        }
     try:
         result = await collection.update_one(query, update, session=session)
         log_mes = f'add operation for `storage` document with name = {storage_object_id}' + db_info
