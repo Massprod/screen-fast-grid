@@ -52,6 +52,9 @@
           "maximum": 6
         }
       }
+    },
+    "sqlData": {
+      "bsonType": "object"
     }
   },
   "indexes": [
@@ -61,6 +64,7 @@
     { "keys": { "receiptDate": -1 }, "options": { "name": "receiptDate_desc_index" } },
     { "keys": { "status": 1 }, "options": { "name": "status_index" } },
     { "keys": { "wheelStack.wheelStackId": 1 }, "options": { "name": "wheelStackId_index" } },
-    { "keys": { "wheelStack.wheelStackPosition": 1 }, "options": { "name": "wheelStackPosition_index" } }
+    { "keys": { "wheelStack.wheelStackPosition": 1 }, "options": { "name": "wheelStackPosition_index" } },
+    { "keys": { "sqlData.product_ID": 1, "sqlData.marked_part_no": 1 }, "options": { "name": "Wheel creation duplicate check" }}
   ]
 }

@@ -8,7 +8,10 @@ from ..base_platform.crud import db_update_platform_last_change
 from auth.jwt_validation import get_role_verification_dependency
 from ..batch_numbers.crud import db_find_batch_number, db_create_batch_number
 from fastapi import APIRouter, Depends, HTTPException, status, Path, Body, Query
-from utility.utilities import get_object_id, convert_object_id_and_datetime_to_str, async_convert_object_id_and_datetime_to_str
+from utility.utilities import (
+    db_execute_free_find_one_query, get_object_id,
+    convert_object_id_and_datetime_to_str, async_convert_object_id_and_datetime_to_str
+)
 from routers.wheelstacks.crud import db_find_wheelstack_by_object_id, db_update_wheelstack
 from constants import (
     DB_PMK_NAME,
@@ -218,6 +221,20 @@ async def route_create_wheel(
     }
     if 'sqlData' in wheel_data:
         cor_data['sqlData'] = wheel_data['sqlData']
+        # Cringe check, but we don't have better option.
+        # Product_ID + marked_part_no <= should be unique.
+        query = {
+            'sqlData.product_ID': cor_data['sqlData']['product_ID'],
+            'sqlData.marked_part_no': cor_data['sqlData']['marked_part_no']
+        }
+        duplicate_data = await db_execute_free_find_one_query(
+            query, {}, db, DB_PMK_NAME, CLN_WHEELS
+        )
+        if duplicate_data:
+            raise HTTPException(
+                detail='Wheel with provided data already exists',
+                status_code=status.HTTP_409_CONFLICT,
+            )
     # We only create wheel, either placed in a fresh `wheelStack` or with empty placement.
     wheelstack_data = None
     if 'wheelStack' in wheel_data and wheel_data['wheelStack'] is not None:
