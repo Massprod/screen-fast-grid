@@ -356,3 +356,99 @@ async def db_get_storage_name_id(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
     
+
+async def db_get_storages_with_elements_data(
+        storage_identifiers: list[dict],  # {'_id': ...}, {'name': ...}
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+        session: AsyncIOMotorClientSession = None,
+):
+    db_info = await log_db_record(db_name, db_collection)
+    logger.info(
+        f'Attempt to gather all data of `storage`' + db_info
+    )
+    collection = await get_db_collection(db, db_name, db_collection)
+    aggregate_queries = []
+    # no identifier == search all
+    if storage_identifiers:
+        # Main `storage` document filter
+        _match = {
+            "$match": {
+                "$or": storage_identifiers
+            }
+        }
+        aggregate_queries.append(_match)
+    # Replace `elements` with corresponding `wheelStack` collection documents
+    _lookup_wheelstacks = {
+        "$lookup": {
+            "from": "wheelStacks",
+            "localField": "elements",
+            "foreignField": "_id",
+            "as": "elements"
+        }
+    }
+    aggregate_queries.append(_lookup_wheelstacks)
+    _lookup_wheels = {
+        "$lookup": {
+            "from": "wheels",
+                "localField": "elements.wheels",
+                "foreignField": "_id",
+                "as": "allWheels",
+                "pipeline": [
+                    {
+                    "$project": {
+                        "sqlData": 0,
+                        "transferData": 0
+                    }
+                    }
+                ]
+        }
+    }
+    aggregate_queries.append(_lookup_wheels)
+    # Find `wheel`s data and replace their `_id`s in corresponding `wheelstack`s
+    _add_field_wheels = {
+        "$addFields": {
+            "elements": {
+                "$map": {
+                "input": "$elements",
+                "as": "element",
+                "in": {
+                    "$mergeObjects": [
+                    "$$element",
+                    {
+                        "wheels": {
+                        "$map": {
+                            "input": "$$element.wheels",  # Iterate over the IDs in `element.wheels`
+                            "as": "wheelId",
+                            "in": {
+                                "$arrayElemAt": [
+                                    "$allWheels",  # Find the corresponding wheel document in `allWheels`
+                                    { "$indexOfArray": ["$allWheels._id", "$$wheelId"] }
+                                ]
+                            }
+                        }
+                        }
+                    }
+                    ]
+                }
+                }
+            }
+        }
+    }
+    aggregate_queries.append(_add_field_wheels)
+    try:
+        result = await collection.aggregate(aggregate_queries, session=session).to_list(length=None)
+        logger.info(
+            f'Successfully gathered all elements data for `storage`s' + db_info
+        )
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        logger.error(
+            f'Error while gathering all elements data for `storage`s' + db_info + error_extra
+        )
+        raise HTTPException(
+            detail=f'Error while gathering `storage` data',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

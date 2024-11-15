@@ -1,7 +1,8 @@
+import asyncio
 from bson import ObjectId
 from loguru import logger
 from typing import Optional
-from utility.utilities import get_object_id
+from utility.utilities import get_object_id, async_convert_object_id_and_datetime_to_str
 from motor.motor_asyncio import AsyncIOMotorClient
 from database.mongo_connection import mongo_client
 from fastapi.responses import JSONResponse, Response
@@ -16,8 +17,8 @@ from routers.storages.crud import (
     db_get_storage_by_name,
     db_create_storage,
     db_get_storage_by_object_id,
-    db_storage_make_json_friendly,
     db_get_all_storages,
+    db_get_storages_with_elements_data,
     db_storage_get_placed_wheelstack,
     db_get_storage_by_element,
 )
@@ -63,13 +64,15 @@ async def route_post_create_storage(
                 ' `ObjectId` used in priority over `name`',
     name='Search Storage',
 )
-async def route_get_created_storage(
-        storage_name: str = Query(None,
+async def route_get_storage(
+        storage_name: str = Query('',
                                   description="Name of the storage to search"),
-        storage_id: str = Query(None,
+        storage_id: str = Query('',
                                 description="`ObjectId` of the storage to search"),
         include_data: bool = Query(True,
                                    description="Indicator to include data of the `elements` inside of `storage`"),
+        expanded_data: bool = Query(False,
+                                    description="Expand all elements to include all data, not just `_id`s"),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
         token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
@@ -80,7 +83,16 @@ async def route_get_created_storage(
             status_code=status.HTTP_400_BAD_REQUEST,
         )
     exist = None
-    if storage_id:
+    if expanded_data:
+        if storage_id:
+            storage_id: ObjectId = get_object_id(storage_id)
+        identifiers: list[dict] = [{'_id': storage_id}, {'name': storage_name}]
+        data = await db_get_storages_with_elements_data(
+            identifiers, db, DB_PMK_NAME, CLN_STORAGES
+        )
+        if data:
+            exist = data[0]
+    elif storage_id:
         storage_object_id = await get_object_id(storage_id)
         exist = await db_get_storage_by_object_id(
             storage_object_id, include_data, db, DB_PMK_NAME, CLN_STORAGES
@@ -94,7 +106,7 @@ async def route_get_created_storage(
             detail=f'Storage not found',
             status_code=status.HTTP_404_NOT_FOUND,
         )
-    resp_data = await db_storage_make_json_friendly(exist)
+    resp_data = await async_convert_object_id_and_datetime_to_str(exist)
     return JSONResponse(
         content=resp_data,
         status_code=status.HTTP_200_OK,
@@ -109,14 +121,25 @@ async def route_get_created_storage(
 async def route_get_created_storages(
         include_data: bool = Query(False,
                                    description='Indicator to include data of the `storages`'),
+        expanded_data: bool = Query(False, 
+                                    description='Expand all elements to include all data, not just `_id`s'),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
         token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
-    resp_data = await db_get_all_storages(include_data, db, DB_PMK_NAME, CLN_STORAGES)
+    resp_data = []
+    if not expanded_data:
+        resp_data = await db_get_all_storages(include_data, db, DB_PMK_NAME, CLN_STORAGES)
+    else:
+        resp_data = await db_get_storages_with_elements_data(
+            [], db, DB_PMK_NAME, CLN_STORAGES
+        )
+    convert_tasks = []
     for index in range(len(resp_data)):
-        resp_data[index] = await db_storage_make_json_friendly(resp_data[index])
+        convert_task = async_convert_object_id_and_datetime_to_str(resp_data[index])
+        convert_tasks.append(convert_task)
+    convert_results = await asyncio.gather(*convert_tasks)
     return JSONResponse(
-        content=resp_data,
+        content=convert_results,
         status_code=status.HTTP_200_OK,
     )
 
