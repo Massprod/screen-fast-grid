@@ -1,10 +1,11 @@
 from enum import Enum
 from typing import Optional
 from pydantic import BaseModel, Field, conlist, field_validator
-from constants import (PS_BASE_PLATFORM, PS_DECONSTRUCTED, PS_GRID,
-                       PS_SHIPPED, PS_LABORATORY,
-                       PS_REJECTED, PRES_TYPE_GRID, PS_STORAGE,
-                       PRES_TYPE_PLATFORM, WS_MAX_WHEELS, WS_MIN_WHEELS)
+from constants import (
+    PS_BASE_PLATFORM, PS_DECONSTRUCTED, PS_GRID,
+    PS_SHIPPED, PS_LABORATORY, PS_REJECTED, PRES_TYPE_GRID, PS_STORAGE,
+    PRES_TYPE_PLATFORM, PT_BASE_PLATFORM, PT_GRID, PT_STORAGE, WS_MAX_WHEELS, WS_MIN_WHEELS
+)
 
 
 class WheelStackStatus(str, Enum):
@@ -16,17 +17,23 @@ class WheelStackStatus(str, Enum):
     storage = PS_STORAGE
     deconstructed = PS_DECONSTRUCTED
 
+class CreateWheelstackStatus(str, Enum):
+    basePlatform = PT_BASE_PLATFORM
+    grid = PT_GRID
+    storage = PT_STORAGE
 
 # We should only allow creation on the `basePlatform`
 class CreatePlacement(str, Enum):
-    basePlatform = PRES_TYPE_PLATFORM
+    grid = PT_GRID
+    basePlatform = PT_BASE_PLATFORM
+    storage = PT_STORAGE
 
 
 # We should only allow moving them from `basePlatform` -> `grid`.
 class AllowedPlacement(str, Enum):
     grid = PRES_TYPE_GRID
     basePlatform = PRES_TYPE_PLATFORM
-    storage = PS_STORAGE
+    storage = PT_STORAGE
 
 
 # def create_enum_with_empty_placeholder(name, values):
@@ -40,8 +47,10 @@ class CreateWheelStackRequest(BaseModel):
     placementType: CreatePlacement = Field(...,
                                            description='Type of the placement we want it to place into:'
                                                        'only `basePlatform` allowed')
-    placementId: str = Field(...,
-                             description='`objectId` of the `basePlatform` on which we want to place it')
+    placementId: str = Field('',
+                             description='`objectId` of the placement on which we want to place it')
+    placementName: str = Field('',
+                               description='Optional `placementName` to identify placement, instead of `placementId`')
     rowPlacement: str = Field(...,
                               description='Current identifier of the `row` this `wheelStack` '
                                           'is placed')
@@ -65,13 +74,13 @@ class CreateWheelStackRequest(BaseModel):
                                       " for now we're just blocking both `wheelStack`'s until order is done."
                                       " So it's a mark of availability of this `wheelStack`"
                                       "  if it's blocked we shouldn't be able to do anything with it.")
-    wheels: conlist(str, min_length=0, max_length=7) = Field(
+    wheels: conlist(str, min_length=0, max_length=WS_MAX_WHEELS) = Field(
         default_factory=list,
         description="list with all `objectId`s of the `wheel`'s to store in this `wheelStack`."
                     " We're using array because we should be able to easily maintain order."
                     " And our wheels placed like 0 -> 5 - indexes, from bottom -> top.",
     )
-    status: WheelStackStatus = Field(...,
+    status: CreateWheelstackStatus = Field(...,
                                      description=f"Current placement.\n"
                                                  f"`{PS_LABORATORY}` - in the laboratory\n"
                                                  f"`{PS_SHIPPED}` - completed product\n"
@@ -85,23 +94,6 @@ class CreateWheelStackRequest(BaseModel):
         if len(wheels) != len(set(wheels)):
             raise ValueError('Each `objectId` of the `wheels` should be unique.')
         return wheels
-
-
-    # @field_validator('createdAt', 'lastChange')
-    # def validate_date(cls, date: datetime):
-    #     if date.tzinfo is None:
-    #         date = date.replace(tzinfo=timezone.utc)
-    #     if date > datetime.now(timezone.utc):
-    #         raise ValueError("`datetime` fields shouldn't be from a future")
-    #     return date
-
-    # @model_validator(mode='after')
-    # def check_changes(self):
-    #     creation_time = self.createdAt
-    #     change_time = self.lastChange
-    #     if creation_time and change_time and change_time < creation_time:
-    #         raise ValueError("`lastChange` can't be made earlier than time of creation `createdAt`")
-    #     return self
 
     class Config:
         json_schema_extra = {
