@@ -302,3 +302,32 @@ async def db_find_many_wheels_by_id(
             detail=f'Error while gathering `wheel`s documents',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+async def db_find_wheels_free_fields(
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+        filter_fields: dict,
+        session: AsyncIOMotorClientSession = None,
+):
+    db_info = await log_db_record(db_name, db_collection)
+    logger.info(
+        f'Gathering `wheel`s with free filtering'
+    )
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {}
+    for field, value in filter_fields.items():
+        query[field] = value
+    try:
+        result = await collection.find(query).to_list(length=None)
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        logger.error(
+            f'Error while executing free filter `wheel`s DB request' + db_info + error_extra
+        )
+        raise HTTPException(
+            detail=f'Error while gathering `wheel`s documents',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
