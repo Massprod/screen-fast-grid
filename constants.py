@@ -1,6 +1,7 @@
 from os import getenv
 from pathlib import Path
 from loguru import logger
+from fastapi import status
 
 
 # Placement types
@@ -138,4 +139,14 @@ LAB_PAGE_ACTION_ROLES: set[str] = {
 }
 CELERY_ACTION_ROLES: set[str] = {
     CELERY_WORKER_ROLE
+}
+
+# WS CODES translate
+WS_CODES: dict[int, int] = {
+    status.HTTP_400_BAD_REQUEST: status.WS_1003_UNSUPPORTED_DATA,  # Bad Request -> Unsupported Data
+    status.HTTP_401_UNAUTHORIZED: status.WS_1008_POLICY_VIOLATION,  # Unauthorized -> Policy Violation
+    status.HTTP_403_FORBIDDEN: status.WS_1008_POLICY_VIOLATION,  # Forbidden -> Policy Violation
+    status.HTTP_404_NOT_FOUND: status.WS_1007_INVALID_FRAME_PAYLOAD_DATA,  # Not Found -> Invalid Frame Payload Data
+    status.HTTP_409_CONFLICT: status.WS_1008_POLICY_VIOLATION,  # Conflict -> Policy Violation
+    status.HTTP_500_INTERNAL_SERVER_ERROR: status.WS_1011_INTERNAL_ERROR,  # Internal Server Error -> Internal Error
 }

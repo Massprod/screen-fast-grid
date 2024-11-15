@@ -22,6 +22,7 @@ from database.collections.collections import create_basic_collections
 from routers.batch_numbers.router import router as batch_numbers_router
 from routers.base_platform.crud import get_platform_by_name, create_platform
 from routers.grid.crud import collect_wheelstack_cells, get_grid_by_name, create_grid
+from routers.websockets.gridWebsocket import router as websocket_router
 from database.presets.presets import create_pmk_grid_preset, create_pmk_platform_preset
 from constants import CLN_STORAGES, PRES_PMK_GRID, PRES_PMK_PLATFORM, DB_PMK_NAME, CLN_PRESETS, CLN_BASE_PLATFORM, CLN_GRID
 
@@ -96,6 +97,7 @@ app.include_router(wheelstack_router, prefix='/wheelstacks', tags=['WheelStack']
 app.include_router(orders_router, prefix='/orders', tags=['Orders'])
 app.include_router(storages_router, prefix='/storages', tags=['Storages'])
 app.include_router(history_router, prefix='/history', tags=['History'])
+app.include_router(websocket_router, prefix='/ws', tags=['ws'])
 
 
 # Deprecated, changed to `lifespan`

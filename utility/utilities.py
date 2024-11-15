@@ -1,12 +1,15 @@
 import asyncio
+from functools import wraps
 from loguru import logger
 from bson import ObjectId
 from pymongo import errors
 from bson.errors import InvalidId
 from datetime import datetime, timezone
 from pymongo.errors import PyMongoError
-from fastapi import HTTPException, status
+from fastapi import HTTPException, WebSocketException, status
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
+
+from constants import WS_CODES
 
 
 
@@ -182,4 +185,30 @@ async def db_execute_free_find_one_query(
         raise HTTPException(
             detail=f'Error while executing free query',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+async def handle_basic_exceptions(msg: str, code: int, is_websocket: bool = False):
+    if is_websocket:
+        raise WebSocketException(
+            code=WS_CODES.get(code, status.WS_1008_POLICY_VIOLATION),
+            reason=msg,
+        )
+    else:
+        raise HTTPException(
+            detail=msg,
+            status_code=code,
+        )
+
+
+async def handle_http_exceptions_for_websocket(func, *args, **kwargs):
+    try:
+        # Call the function that might raise an HTTPException
+        return await func(*args, **kwargs)
+    except HTTPException as http_exc:
+        # Convert HTTPException to WebSocketException with an appropriate code
+        status_code = http_exc.status_code
+        raise WebSocketException(
+            code=WS_CODES.get(status_code, status.WS_1008_POLICY_VIOLATION),
+            reason=http_exc.detail
         )

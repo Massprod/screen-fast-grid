@@ -3,17 +3,23 @@ from bson import ObjectId
 from database.mongo_connection import mongo_client
 from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi.responses import JSONResponse, Response
-from routers.grid.crud import clear_grid_cell, place_wheelstack_in_grid
+from routers.grid.crud import clear_grid_cell, db_get_grid_cell_data, db_get_grid_name_id, place_wheelstack_in_grid
 from motor.motor_asyncio import AsyncIOMotorClientSession
-from routers.storages.crud import db_storage_delete_placed_wheelstack, db_storage_place_wheelstack
+from routers.storages.crud import db_get_storage_by_object_id, db_get_storage_name_id, db_storage_delete_placed_wheelstack, db_storage_place_wheelstack
 from auth.jwt_validation import get_role_verification_dependency
 from routers.history.history_actions import background_history_record
 from routers.wheels.crud import db_find_wheel_by_object_id, db_update_wheel
 from routers.batch_numbers.crud import db_find_batch_number, db_create_batch_number
-from utility.utilities import get_object_id, time_w_timezone
+from utility.utilities import get_object_id, time_w_timezone, handle_basic_exceptions
 from fastapi import APIRouter, Depends, HTTPException, status, Path, Body, BackgroundTasks
 from .models.models import CreateWheelStackRequest, ForceUpdateWheelStackRequest, WheelsData
-from routers.base_platform.crud import cell_exist, clear_platform_cell, place_wheelstack_in_platform, get_platform_by_object_id
+from routers.base_platform.crud import (
+    clear_platform_cell,
+    db_get_platform_cell_data,
+    db_get_platform_name_id,
+    place_wheelstack_in_platform,
+    get_platform_by_object_id
+)
 from constants import (
     CLN_GRID,
     CLN_STORAGES,
@@ -46,15 +52,231 @@ from .crud import (
 
 router = APIRouter()
 
+# TODO: Move to appropriate place.
+#       Also `WebsockeException`s will be dealt with `handle_http_exceptions_for_websocket`.
+#       So, either remove `handle_basic_exceptions` or w.e it's not actually going to differ.
+async def create_new_wheelstack_check_batch(
+        batch_data: dict, db: AsyncIOMotorClient, session: AsyncIOMotorClientSession
+):
+    batch_number: str = batch_data['batchNumber']
+    # Using transaction, so we can't just `insert_one` and ignore Duplicate.
+    # Transaction abrupts at any error...
+    exists: dict = await db_find_batch_number(
+        batch_number, db, DB_PMK_NAME, CLN_BATCH_NUMBERS, session
+    )
+    if exists is None:
+        await db_create_batch_number(
+            batch_data, db, DB_PMK_NAME, CLN_BATCH_NUMBERS, session
+        )
+
+
+async def create_new_wheelstack_cell_check(cell_data, is_websocket: bool = False):
+    if cell_data['blocked']:
+        msg_cell_blocked: str = 'Chosen placement cell blocked'
+        await handle_basic_exceptions(msg_cell_blocked, status.HTTP_403_FORBIDDEN, is_websocket)
+    elif cell_data['wheelStack']:
+        msg_cell_taken: str = 'Chosen placement cell already taken by different wheelstack'
+        await handle_basic_exceptions(msg_cell_taken, status.HTTP_403_FORBIDDEN, is_websocket)
+
+
+async def create_new_wheelstack_check_placement(
+        db: AsyncIOMotorClient, placement_data: dict, is_websocket: bool = False
+) -> dict:
+    msg_non_existing_placement = 'Chosen placement doesnt exist'
+    placement = None
+    placement_id: ObjectId = placement_data['placementId']
+    placement_name: str = placement_data['placementName']
+    placement_type: str = placement_data['placementType']
+    placement_row: str = placement_data['placementRow']
+    placement_col: str = placement_data['placementCol']
+    if PT_BASE_PLATFORM == placement_type:
+        placement = await db_get_platform_cell_data(
+            placement_id, placement_row, placement_col, db, DB_PMK_NAME, CLN_BASE_PLATFORM, placement_name
+        )
+    elif PT_GRID == placement_data['placementType']:
+        placement = await db_get_grid_cell_data(
+            placement_id, placement_row, placement_col, db, DB_PMK_NAME, CLN_GRID, placement_name
+        )
+    elif PT_STORAGE == placement_data['placementType']:
+        placement = await db_get_storage_name_id(
+            placement_id, placement_name, db, DB_PMK_NAME, CLN_STORAGES
+        )
+    if placement is None:
+        await handle_basic_exceptions(msg_non_existing_placement, status.HTTP_404_NOT_FOUND, is_websocket)
+    if PT_BASE_PLATFORM == placement_data['placementType'] or PT_GRID == placement_data['placementType']:
+        cell_data = placement['rows'][placement_data['placementRow']]['columns'][placement_data['placementCol']]
+        await create_new_wheelstack_cell_check(cell_data)
+    return placement
+
+
+async def create_new_wheelstack_wheel_check(
+        db: AsyncIOMotorClient, wheel_id: str,
+        wheelstack_data: dict, is_websocket: bool = False
+):
+    wheel_object_id: ObjectId = await get_object_id(wheel_id)
+    wheel_data: dict = await db_find_wheel_by_object_id(
+        wheel_object_id, db, DB_PMK_NAME, CLN_WHEELS
+    )
+    if wheel_data is None:
+        msg_missing: str = f'Provided wheel doesnt exist {wheel_id}'
+        await handle_basic_exceptions(
+            msg_missing, status.HTTP_404_NOT_FOUND, is_websocket
+        )
+    # Same batc
+    wheelstack_batch: str = wheelstack_data['batchNumber'] 
+    wheel_batch: str = wheel_data['batchNumber']
+    if wheel_batch != wheelstack_batch:
+        msg_incorrect_batch: str = f'Provided wheel = {wheel_id} have different `batchNumber` => {wheel_batch}'
+        await handle_basic_exceptions(
+            msg_incorrect_batch, status.HTTP_400_BAD_REQUEST, is_websocket
+        )
+    wheel_status: str = wheel_data['status']
+    if wheel_status != WH_UNPLACED and wheel_status != PT_BASE_PLATFORM:
+        msg_incorrect_status: str = f'Provided wheel = {wheel_id} have incorrect `status` => {wheel_status} | Only `unplaced` allowed'
+        await handle_basic_exceptions(
+            msg_incorrect_status, status.HTTP_400_BAD_REQUEST, is_websocket
+        )
+    wheel_wheelstack: dict = wheel_data['wheelStack']
+    if wheel_wheelstack:
+        msg_already_used: str = f'Provided wheel = {wheel_id} already used in different `wheelstack` => {wheel_wheelstack['_id']}'
+        await handle_basic_exceptions(
+            msg_already_used, status.HTTP_400_BAD_REQUEST, is_websocket
+        )
+
+
+async def update_placement_filter(wheelstack_data: dict, db: AsyncIOMotorClient, session: AsyncIOMotorClientSession):
+    wheelstack_id: ObjectId = wheelstack_data['_id']
+    placement_id: str = wheelstack_data['placement']['placementId']
+    placement_type: str = wheelstack_data['placement']['type']
+    placement_row: str = wheelstack_data['rowPlacement']
+    placement_col: str = wheelstack_data['colPlacement']
+    if PT_STORAGE == placement_type:
+        await db_storage_place_wheelstack(
+            placement_id, '', wheelstack_id,
+            db, DB_PMK_NAME, CLN_STORAGES, session
+        )
+    elif PT_GRID == placement_type:
+        await place_wheelstack_in_grid(
+            placement_id, wheelstack_id, placement_row, placement_col,
+            db, DB_PMK_NAME, CLN_GRID, session
+        )
+    elif PT_BASE_PLATFORM == placement_type:
+        await place_wheelstack_in_platform(
+            placement_id, wheelstack_id, placement_row, placement_col,
+            db, DB_PMK_NAME, CLN_BASE_PLATFORM, session 
+        )
+
+
+async def create_new_wheelstack_action(
+        db: AsyncIOMotorClient, wheelstack_data: dict, is_websocket: bool = False
+    ):
+    placement_id: str = wheelstack_data['placementId']
+    if placement_id:
+        placement_id: ObjectId = await get_object_id(wheelstack_data['placementId'])
+    placement_name: str = wheelstack_data['placementName']
+    placement_type: str = wheelstack_data['placementType']
+    placement_row: str = wheelstack_data['rowPlacement']
+    placement_col: str = wheelstack_data['colPlacement']
+    placement_data: dict = {
+        'placementId': placement_id,
+        'placementName': placement_name,
+        'placementType': placement_type,
+        'placementRow': placement_row,
+        'placementCol': placement_col,
+    }
+    check_tasks = []
+    # Placement check: should exist and desired placement cell is empty
+    check_tasks.append(
+        create_new_wheelstack_check_placement(db, placement_data)
+    )
+    # Wheels check: all should exist and not placed in something else.
+    for wheel_id in wheelstack_data['wheels']:
+        check_tasks.append(
+            create_new_wheelstack_wheel_check(db, wheel_id, wheelstack_data, is_websocket)
+        )
+    check_results = await asyncio.gather(*check_tasks)
+    placement_result = check_results[0]
+    placement_id: ObjectId = placement_result['_id']
+    batch_number: str = wheelstack_data['batchNumber']
+    cor_wheels: list[ObjectId] = [await get_object_id(wheel_id) for wheel_id in wheelstack_data['wheels']]
+    transaction_tasks = []
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            # Batch create or ignore if exists
+            new_batch_number_data: dict = {
+                'batchNumber': batch_number,
+                'laboratoryPassed': False,
+                'laboratoryTestDate': None,
+            }
+            transaction_tasks.append(
+                create_new_wheelstack_check_batch(
+                    new_batch_number_data, db, session
+                )
+            )
+            # Wheelstack data gather
+            creation_time = await time_w_timezone()
+            correct_data = {
+                'batchNumber': batch_number,
+                'placement': {
+                    'type': placement_type,
+                    'placementId': placement_id,
+                },
+                'rowPlacement': placement_row,
+                'colPlacement': placement_col,
+                'createdAt': creation_time,
+                'lastChange': creation_time,
+                'lastOrder': None,
+                'maxSize': wheelstack_data['maxSize'],
+                'blocked': False,
+                'wheels': cor_wheels,
+                'status': wheelstack_data['status'],
+            }
+            transaction_tasks.append(
+                db_insert_wheelstack(
+                    correct_data, db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                )
+            )
+            # Update wheels
+            transaction_results = await asyncio.gather(*transaction_tasks)
+            creation_result = transaction_results[1]
+            created_id: ObjectId = creation_result.inserted_id
+            transaction_tasks = []
+            correct_data['_id'] = created_id
+            for index, wheel_object_id in enumerate(cor_wheels):
+                wheelstack_wheel_record: dict = {
+                    'wheelStack': {
+                        'wheelStackId': created_id,
+                        'wheelStackPosition': index,
+                    },
+                    'status': wheelstack_data['status'],
+                }
+                transaction_tasks.append(
+                    db_update_wheel(
+                        wheel_object_id, wheelstack_wheel_record, db, DB_PMK_NAME, CLN_WHEELS, session
+                    )
+                )
+            # Place in correct placement
+            transaction_tasks.append(
+                update_placement_filter(
+                    correct_data, db, session
+                )
+            )
+            transaction_results = await asyncio.gather(*transaction_tasks)
+            result_data: dict = {
+                'createdId': created_id,
+                'usedData': correct_data
+            }
+            return result_data
+# ---
+
 
 @router.post(
     path='/',
-    description='Create and place a new `wheelStack` in the chosen `basePlatform`',
+    description='Create and place a new `wheelStack` in chosen placement',
     status_code=status.HTTP_201_CREATED,
     response_description='`objectId` of the created wheelstack',
     response_class=JSONResponse,
-    # responses={},  # add examples
-    name='Create Wheelstack'
+    name='Create Wheelstack',
 )
 async def route_create_wheelstack(
         background_tasks: BackgroundTasks,
@@ -66,124 +288,26 @@ async def route_create_wheelstack(
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
         token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES | CELERY_ACTION_ROLES),
 ):
+    # TODO: Async changes for checks + We should be able to create Wheelstack in `tempoStorage`.
     wheelstack_data = wheelstack.model_dump()
-    # +++ Placement exist
-    placement_id: ObjectId = await get_object_id(wheelstack_data['placementId'])
-    platform = await get_platform_by_object_id(placement_id, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
-    if platform is None:
-        raise HTTPException(
-            detail='Incorrect `placementId` it doesnt exist',
-            status_code=status.HTTP_404_NOT_FOUND,
-        )
-    # Placement exist ---
-    # +++ Wheels:
-    # Checking for a correct `objectId` type and `wheel` should already exist,
-    #   and it shouldn't be yet assigned.
-    cor_wheels: list[ObjectId] = []
-    for wheel in wheelstack_data['wheels']:
-        wheel_id: ObjectId = await get_object_id(wheel)
-        exist = await db_find_wheel_by_object_id(wheel_id, db, DB_PMK_NAME, CLN_WHEELS)
-        if exist is None:
-            raise HTTPException(
-                detail=f'`wheel` with given `objectId` = {wheel}. Not Found.',
-                status_code=status.HTTP_404_NOT_FOUND,
-            )
-        if exist['wheelStack'] is not None:
-            raise HTTPException(
-                detail=f'`wheel` with given `objectId` = {wheel}.'
-                       f' Already Assigned to = {exist['wheelStack']}',
-                status_code=status.HTTP_409_CONFLICT,
-            )
-        if exist['batchNumber'] != wheelstack_data['batchNumber']:
-            raise HTTPException(
-                detail=f'All of the wheels in the `wheelstack` should have the same `batchNumber`.'
-                       f' And it should be equal to the `batchNumber` of the `wheelstack`.',
-                status_code=status.HTTP_400_BAD_REQUEST,
-            )
-
-        cor_wheels.append(wheel_id)
-    # Wheels ---
-    # +++ Placement empty
-    row: str = wheelstack_data['rowPlacement']
-    col: str = wheelstack_data['colPlacement']
-    platform_id: ObjectId = await get_object_id(wheelstack_data['placementId'])
-    placement_data = await cell_exist(platform_id, row, col, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
-    if placement_data is None:
-        raise HTTPException(
-            detail=f'Incorrect placement cell data,'
-                   f' no such cell exist in placement with `objectId` = {str(platform_id)}',
-            status_code=status.HTTP_404_NOT_FOUND,
-        )
-    placement_wheelstack = placement_data['rows'][row]['columns'][col]['wheelStack']
-    if placement_wheelstack is not None:
-        raise HTTPException(
-            detail=f'Placement cell already taken by `wheelStack` with `objectId` = {placement_wheelstack}',
-            status_code=status.HTTP_302_FOUND,
-        )
-    # Placement empty ---
-    # +++ Placement blocked
-    placement_blocked = placement_data['rows'][row]['columns'][col]['blocked']
-    if placement_blocked:
-        raise HTTPException(
-            detail='Placement cell marked as `blocked`. Waiting for order',
-            status_code=status.HTTP_403_FORBIDDEN,
-        )
-    # Placement blocked ---
-    async with (await db.start_session()) as session:
-        async with session.start_transaction():
-            batch_number_exist = await db_find_batch_number(
-                wheelstack_data['batchNumber'], db, DB_PMK_NAME, CLN_BATCH_NUMBERS, session
-            )
-            if batch_number_exist is None:
-                new_batch_number_data: dict = {
-                    'batchNumber': wheelstack_data['batchNumber'],
-                    'laboratoryPassed': False,
-                    'laboratoryTestDate': None,
-                }
-                await db_create_batch_number(
-                    new_batch_number_data, db, DB_PMK_NAME, CLN_BATCH_NUMBERS, session
-                )
-            creation_time = await time_w_timezone()
-            correct_data = {
-                'batchNumber': wheelstack_data['batchNumber'],
-                'placement': {
-                    'type': wheelstack_data['placementType'],
-                    'placementId': placement_id,
-                },
-                'rowPlacement': wheelstack_data['rowPlacement'],
-                'colPlacement': wheelstack_data['colPlacement'],
-                'createdAt': creation_time,
-                'lastChange': creation_time,
-                'lastOrder': None,
-                'maxSize': wheelstack_data['maxSize'],
-                'blocked': False,
-                'wheels': cor_wheels,
-                'status': wheelstack_data['status'],
-            }
-            result = await db_insert_wheelstack(correct_data, db, DB_PMK_NAME, CLN_WHEELSTACKS)
-            created_id: ObjectId = result.inserted_id
-            await place_wheelstack_in_platform(placement_id, created_id, row, col, db, DB_PMK_NAME, CLN_BASE_PLATFORM)
-            # +++ Marking Wheels
-            for index, wheel_id in enumerate(cor_wheels):
-                record: dict = {
-                    'wheelStack': {
-                        'wheelStackId': created_id,
-                        'wheelStackPosition': index,
-                    }
-                }
-                await db_update_wheel(wheel_id, record, db, DB_PMK_NAME, CLN_WHEELS)
-            # Marking Wheels ---
-            # + BG record +
-            placement_id = correct_data['placement']['placementId']
-            placement_type = correct_data['placement']['type']
-            background_tasks.add_task(background_history_record, placement_id, placement_type, db)
-            # - BG record -
-            return JSONResponse(
-                content={
-                    '_id': str(created_id)
-                },
-                status_code=status.HTTP_201_CREATED,
-            )
+    created_data: dict = await create_new_wheelstack_action(
+        db, wheelstack_data
+    )
+    cor_wheelstack_data: dict = created_data['usedData']
+    created_id: ObjectId = created_data['createdId']
+    # + BG HISTORY RECORD +
+    placement_id: ObjectId = cor_wheelstack_data['placement']['placementId']
+    placement_type: str = cor_wheelstack_data['placement']['type']
+    background_tasks.add_task(
+        background_history_record, placement_id, placement_type, db
+    )
+    # - BG HISTORY RECORD -
+    return JSONResponse(
+        content={
+            '_id': str(created_id)
+        },
+        status_code=status.HTTP_201_CREATED,
+    )
 
 
 @router.get(
