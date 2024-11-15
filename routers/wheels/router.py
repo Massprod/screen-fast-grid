@@ -1,3 +1,4 @@
+import asyncio
 from bson import ObjectId
 from loguru import logger
 from .models.models import CreateWheelRequest
@@ -219,22 +220,31 @@ async def route_create_wheel(
             'transferDate': None,
         }
     }
-    if 'sqlData' in wheel_data:
-        cor_data['sqlData'] = wheel_data['sqlData']
-        # Cringe check, but we don't have better option.
-        # Product_ID + marked_part_no <= should be unique.
-        query = {
-            'sqlData.product_ID': cor_data['sqlData']['product_ID'],
-            'sqlData.marked_part_no': cor_data['sqlData']['marked_part_no']
-        }
-        duplicate_data = await db_execute_free_find_one_query(
-            query, {}, db, DB_PMK_NAME, CLN_WHEELS
-        )
-        if duplicate_data:
-            raise HTTPException(
-                detail='Wheel with provided data already exists',
-                status_code=status.HTTP_409_CONFLICT,
-            )
+    # Removing duplicates check. Because we're not guaranteed correct data.
+    # And even if we're getting duplicate, it doesnt affect us, because we're using `_id`.
+    # So, users can clear them later if they need to.
+    # Because we can't just go into SQL we're reading from and delete it for that reason.
+    # if 'sqlData' in wheel_data:
+    #     cor_data['sqlData'] = wheel_data['sqlData']
+    #     # Cringe check, but we don't have better option.
+    #     # Product_ID + marked_part_no <= should be unique.
+    #     # TODO: We need to clear SQL or change addition.
+    #     #  Otherwise we will get infinite-loop with rejecting duplicates :)
+    #     #  For now, just adding more fields to check...
+    #     query = {
+    #         'sqlData.order_no': cor_data['sqlData']['order_no'],
+    #         'sqlData.year': cor_data['sqlData']['year'],
+    #         'sqlData.product_ID': cor_data['sqlData']['product_ID'],
+    #         'sqlData.marked_part_no': cor_data['sqlData']['marked_part_no']
+    #     }
+    #     duplicate_data = await db_execute_free_find_one_query(
+    #         query, {}, db, DB_PMK_NAME, CLN_WHEELS
+    #     )
+    #     if duplicate_data:
+    #         raise HTTPException(
+    #             detail='Wheel with provided data already exists',
+    #             status_code=status.HTTP_409_CONFLICT,
+    #         )
     # We only create wheel, either placed in a fresh `wheelStack` or with empty placement.
     wheelstack_data = None
     if 'wheelStack' in wheel_data and wheel_data['wheelStack'] is not None:
@@ -295,14 +305,20 @@ async def route_create_wheel(
                     await db_create_batch_number(
                         new_batch_number_data, db, DB_PMK_NAME, CLN_BATCH_NUMBERS
                     )
+            update_tasks = []
             if wheelstack_data is not None:
                 wheelstack_data['wheels'].append(result.inserted_id)
-                await db_update_wheelstack(
-                    wheelstack_data, wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                update_tasks.append(
+                    db_update_wheelstack(
+                        wheelstack_data, wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                    )
                 )
-                await db_update_platform_last_change(
-                    wheelstack_data['placement']['placementId'], db, DB_PMK_NAME, CLN_BASE_PLATFORM, session
+                update_tasks.append(
+                    db_update_platform_last_change(
+                        wheelstack_data['placement']['placementId'], db, DB_PMK_NAME, CLN_BASE_PLATFORM, session
+                    )
                 )
+            update_results = await asyncio.gather(*update_tasks)
             cor_data = convert_object_id_and_datetime_to_str(cor_data)
             return JSONResponse(
                 content=cor_data,
