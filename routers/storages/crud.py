@@ -98,6 +98,7 @@ async def db_get_storage_by_object_id(
         '_id': storage_object_id,
     }
     projection = {
+        '_id': True,
         'name': True,
         'createdAt': True,
         'lastChange': True,
@@ -155,7 +156,7 @@ async def db_storage_place_wheelstack(
         }
     try:
         result = await collection.update_one(query, update, session=session)
-        log_mes = f'add operation for `storage` document with name = {storage_object_id}' + db_info
+        log_mes = f'add operation for `storage` document with id = {storage_object_id} | name = {storage_name}' + db_info
         if 0 == result.modified_count:
             logger.info(f'Unsuccessful {log_mes}')
         else:
@@ -307,3 +308,51 @@ async def db_get_storage_by_element(
             detail='Error while searching data',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+async def db_get_storage_name_id(
+        storage_id: ObjectId,
+        storage_name: str,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+        include_data: bool = False,
+        session: AsyncIOMotorClientSession = None,
+):
+    db_info = await log_db_record(db_name, db_collection)
+    logger.info(
+        f'Attempt to search a `storage` document with: id = {storage_id} | name = {storage_name}' + db_info
+    )
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '$or': [
+            {'_id': storage_id},
+            {'name': storage_name},
+        ]
+    }
+    projection = {}
+    if not include_data:
+        projection = {
+            'elements': 0
+        }
+    try:
+        result = await collection.find_one(query, projection, session=session)
+        if result is None:
+            logger.info(
+                f"Unsuccessful search for `storage` document with: id = {storage_id} | name = {storage_name}" + db_info
+            )
+        else:
+            logger.info(
+                f'Successful search for `storage` document with: id = {storage_id} | name = {storage_name}' + db_info
+            )
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        logger.error(
+            f'Error while searching for `storage` document with: id = {storage_id} | name = {storage_name}' + db_info + error_extra
+        )
+        raise HTTPException(
+            detail=f'Error while searching for `storage`',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+    

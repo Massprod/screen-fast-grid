@@ -3,7 +3,7 @@ import asyncio
 from bson import ObjectId
 from loguru import logger
 from fastapi import status
-from pymongo.errors import PyMongoError
+from pymongo.errors import PyMongoError, DuplicateKeyError
 from fastapi.exceptions import HTTPException
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
 from utility.utilities import get_db_collection, time_w_timezone, log_db_record, get_object_id, log_db_error_record
@@ -190,6 +190,9 @@ async def create_grid(
             f'Successfully created a new `grid` with `objectId` = {res.inserted_id}' + db_log_data
         )
         return res
+    except DuplicateKeyError as error:
+        logger.info('Grid already exists')
+        return
     except PyMongoError as error:
         logger.error(f'Error while creating `grid` = {error}' + db_log_data)
         raise HTTPException(
@@ -340,17 +343,22 @@ async def db_get_grid_cell_data(
         col: str,
         db: AsyncIOMotorClient,
         db_name: str,
-        db_collection: str
+        db_collection: str,
+        grid_name: str = '',
 ):
     collection = await get_db_collection(db, db_name, db_collection)
     query = {
-        '_id': grid_id,
+        '$or': [
+            {'_id': grid_id},
+            {'name': grid_name}
+        ],
         f'rows.{row}.columns.{col}': {
             '$exists': True,
         }
     }
     projection = {
         '_id': 1,
+        'name': 1,
         f'rows.{row}.columns.{col}': 1,
     }
     try:
@@ -712,5 +720,49 @@ async def db_grid_add_assigned_platforms(
         logger.error(error_str + db_info + error_extra)
         raise HTTPException(
             detail=error_str,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+async def db_get_grid_name_id(
+        grid_id: ObjectId,
+        grid_name: str,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+        include_data: bool = False,
+        session=None,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    db_info = await log_db_record(db_name, db_collection)
+    logger.info(
+        f'Attempt to gather grid data => id: {grid_id} | name: {grid_name} | includeData: {include_data}' + db_info
+    )
+    query = {
+        '$or': [
+            {'_id': grid_id},
+            {'name': grid_name}
+        ]
+    }
+    projection = {}
+    if not include_data:
+        projection = {
+            'rowsOrder': 0,
+            'rows': 0,
+            'extra': 0,
+        }
+    try:
+        result = await collection.find_one(query, projection, session=session)
+        logger.info(
+            'Successfully gathered grid data' + db_info
+        )
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        logger.error(
+            f'Error while searching grid' + db_info + error_extra
+        )
+        raise HTTPException(
+            detail=f'Error while searching grid',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

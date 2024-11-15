@@ -1,9 +1,9 @@
 from bson import ObjectId
 from loguru import logger
-from pymongo.errors import PyMongoError
+from pymongo.errors import PyMongoError, DuplicateKeyError
 from fastapi import status, HTTPException
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
-from utility.utilities import get_db_collection, time_w_timezone, log_db_record
+from utility.utilities import get_db_collection, log_db_error_record, time_w_timezone, log_db_record
 
 
 async def platform_make_json_friendly(platform_data):
@@ -164,6 +164,9 @@ async def create_platform(
             f'Successfully created a new `platform` with `objectId` = {res.inserted_id}' + db_log_data
         )
         return res
+    except DuplicateKeyError as error:
+        logger.info('basePlatform already exists')
+        return
     except PyMongoError as error:
         logger.error(f'Error while creating `platform` = {error}' + db_log_data)
         raise HTTPException(
@@ -233,17 +236,22 @@ async def db_get_platform_cell_data(
         col: str,
         db: AsyncIOMotorClient,
         db_name: str,
-        db_collection: str
+        db_collection: str,
+        platform_name: str = '',
 ):
     collection = await get_db_collection(db, db_name, db_collection)
     query = {
-        '_id': platform_id,
+        '$or': [
+            {'_id': platform_id},
+            {'name': platform_name}
+        ],
         f'rows.{row}.columns.{col}': {
             '$exists': True,
         }
     }
     projection = {
         '_id': 1,
+        'name': 1,
         f'rows.{row}.columns.{col}': 1,
     }
     try:
@@ -265,7 +273,7 @@ async def place_wheelstack_in_platform(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
-        session: AsyncIOMotorClientSession=None
+        session: AsyncIOMotorClientSession=None,
 ):
     collection = await get_db_collection(db, db_name, db_collection)
     query = {
@@ -480,5 +488,49 @@ async def db_update_platform_last_change(
         logger.error(f'Error while updating in {db_collection}: {error}')
         raise HTTPException(
             detail=f'Error while updating `lastChange` time',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+async def db_get_platform_name_id(
+        platform_id: ObjectId,
+        platform_name: str,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+        include_data: bool = False,
+        session=None,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    db_info = await log_db_record(db_name, db_collection)
+    logger.info(
+        f'Attempt to gather platform data => id: {platform_id} | name: {platform_name} | includeData: {include_data}' + db_info
+    )
+    query = {
+        '$or': [
+            {'_id': platform_id},
+            {'name': platform_name}
+        ]
+    }
+    projection = {}
+    if not include_data:
+        projection = {
+            'rowsOrder': 0,
+            'rows': 0,
+            'extra': 0,
+        }
+    try:
+        result = await collection.find_one(query, projection, session=session)
+        logger.info(
+            'Successfully gathered platform data' + db_info
+        )
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        logger.error(
+            f'Error while searching platform' + db_info + error_extra
+        )
+        raise HTTPException(
+            detail=f'Error while searching platform',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
