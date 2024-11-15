@@ -224,8 +224,8 @@ async def route_create_wheel(
     # And even if we're getting duplicate, it doesnt affect us, because we're using `_id`.
     # So, users can clear them later if they need to.
     # Because we can't just go into SQL we're reading from and delete it for that reason.
-    # if 'sqlData' in wheel_data:
-    #     cor_data['sqlData'] = wheel_data['sqlData']
+    if 'sqlData' in wheel_data:
+        cor_data['sqlData'] = wheel_data['sqlData']
     #     # Cringe check, but we don't have better option.
     #     # Product_ID + marked_part_no <= should be unique.
     #     # TODO: We need to clear SQL or change addition.
