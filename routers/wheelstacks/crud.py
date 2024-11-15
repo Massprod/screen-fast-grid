@@ -119,14 +119,28 @@ async def db_insert_wheelstack(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
+        session: AsyncIOMotorClientSession = None,
 ):
+    collection = await get_db_collection(db, db_name, db_collection)
+    db_info: str = await log_db_record(db_name, db_collection)
+    logger.info(
+        'Attempt to insert new `wheelstack` record' + db_info
+    )
     try:
-        wheelstacks_collection = await get_db_collection(db, db_name, db_collection)
-        res = await wheelstacks_collection.insert_one(wheelstack_data)
+        res = await collection.insert_one(wheelstack_data, session=session)
+        logger.info(
+            f'Successfully inserted new `wheelstack` record => {res.inserted_id}'
+        )
         return res
-    except PyMongoError as e:
-        logger.error(f"Error inserting `wheelStack`: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database insertion error")
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        logger.error(
+            f'Error while inserting `wheelstacksData` => {wheelstack_data}' + db_info + error_extra
+        )
+        raise HTTPException(
+            detail='Error while inserting data',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 async def db_delete_wheelstack(
