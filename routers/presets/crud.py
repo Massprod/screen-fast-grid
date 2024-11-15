@@ -4,7 +4,7 @@ from fastapi import status
 from fastapi.exceptions import HTTPException
 from utility.utilities import get_db_collection, log_db_record
 from motor.motor_asyncio import AsyncIOMotorClient
-from pymongo.errors import PyMongoError
+from pymongo.errors import PyMongoError, DuplicateKeyError
 
 
 async def preset_make_json_friendly(preset_data: dict) -> dict:
@@ -131,6 +131,9 @@ async def add_new_preset(
                 f'Preset `{preset_name}` successfully added with `objectId` = {res.inserted_id}' + db_log_data
             )
             return res.inserted_id
+        except DuplicateKeyError as error:
+            logger.info('Preset already exists')
+            return
         except PyMongoError as error:
             logger.error(f'Error while inserting preset `{preset_name}` = {error}' + db_log_data)
             raise HTTPException(
