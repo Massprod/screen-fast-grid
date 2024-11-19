@@ -3,9 +3,9 @@ from bson import ObjectId
 from database.mongo_connection import mongo_client
 from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi.responses import JSONResponse, Response
-from routers.grid.crud import clear_grid_cell, db_get_grid_cell_data, db_get_grid_name_id, place_wheelstack_in_grid
+from routers.grid.crud import clear_grid_cell, db_get_grid_cell_data, place_wheelstack_in_grid
 from motor.motor_asyncio import AsyncIOMotorClientSession
-from routers.storages.crud import db_get_storage_by_object_id, db_get_storage_name_id, db_storage_delete_placed_wheelstack, db_storage_place_wheelstack
+from routers.storages.crud import db_get_storage_name_id, db_storage_delete_placed_wheelstack, db_storage_place_wheelstack
 from auth.jwt_validation import get_role_verification_dependency
 from routers.history.history_actions import background_history_record
 from routers.wheels.crud import db_find_wheel_by_object_id, db_update_wheel
@@ -16,9 +16,7 @@ from .models.models import CreateWheelStackRequest, ForceUpdateWheelStackRequest
 from routers.base_platform.crud import (
     clear_platform_cell,
     db_get_platform_cell_data,
-    db_get_platform_name_id,
     place_wheelstack_in_platform,
-    get_platform_by_object_id
 )
 from constants import (
     CLN_GRID,
