@@ -1,3 +1,4 @@
+from datetime import datetime
 import json
 import asyncio
 from bson import ObjectId
@@ -19,13 +20,15 @@ from constants import (
     BASIC_PAGE_ACTION_ROLES,
     BASIC_PAGE_VIEW_ROLES,
     CLN_BATCH_NUMBERS,
+    CLN_STORAGES,
     CLN_WHEELS,
     DB_PMK_NAME,
 )
 from routers.history.history_actions import background_history_record
+from routers.storages.crud import db_get_storages_with_elements_data
 from routers.wheels.crud import db_find_wheels_free_fields
 from routers.wheelstacks.router import create_new_wheelstack_action
-from utility.utilities import async_convert_object_id_and_datetime_to_str, get_object_id, handle_http_exceptions_for_websocket
+from utility.utilities import async_convert_object_id_and_datetime_to_str, handle_http_exceptions_for_websocket
 
 
 router = APIRouter()
@@ -49,7 +52,7 @@ async def filter_req_data(req_data, db: AsyncIOMotorClient):
     req_resp: str
     req_type: str = req_data['type']
     req_task: str = req_data['filter']['task']
-    req_data_filter: str = req_data['filter']['dataFilter']
+    req_data_filter: dict = req_data['filter']['dataFilter']
     # TODO: we can create filter with `dict`, but the problem is args.
     #  We can specify default args for tasks, but what about extra?
     #  Some DB requests using req args as first ones...later
@@ -77,6 +80,25 @@ async def filter_req_data(req_data, db: AsyncIOMotorClient):
             )
             return req_resp
         # - wheelsUnplaced -
+        # + tempoStorage +
+        elif 'expandedStorage' == req_task:
+            storage_name: str = req_data_filter['name']
+            last_change = req_data_filter.get('lastChange', None)
+            ignore_date: datetime | None = datetime.fromisoformat(req_data_filter['lastChange']) if last_change else None
+            identifiers: list[dict] = [
+                {'name': storage_name}
+            ]
+            data = await db_get_storages_with_elements_data(
+                identifiers, db, DB_PMK_NAME, CLN_STORAGES, None, ignore_date
+            )
+            cor_data = None
+            if data:
+                cor_data = await async_convert_object_id_and_datetime_to_str(data[0])  # using this for multi gather == array
+            req_resp = await create_json_req_resp(
+                'dataUpdate', 'expandedStorage', cor_data
+            )
+            return req_resp
+        # - tempoStorage -
     # - gather -
     # + create +
     elif 'create' == req_type:
