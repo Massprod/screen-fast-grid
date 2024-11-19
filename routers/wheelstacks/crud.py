@@ -2,7 +2,7 @@ from loguru import logger
 from bson import ObjectId
 from pymongo.errors import PyMongoError
 from fastapi import HTTPException, status
-from constants import PS_SHIPPED, PS_REJECTED
+from constants import PS_DECONSTRUCTED, PS_SHIPPED, PS_REJECTED
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
 from utility.utilities import get_db_collection, time_w_timezone, log_db_record, log_db_error_record
 
@@ -212,7 +212,7 @@ async def db_history_get_placement_wheelstacks(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
-        status_filter: list[str] = [PS_SHIPPED, PS_REJECTED],
+        status_filter: list[str] = [PS_SHIPPED, PS_REJECTED, PS_DECONSTRUCTED],
         include_filter: bool = False,
 ):
     collection = await get_db_collection(db, db_name, db_collection)
