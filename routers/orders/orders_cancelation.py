@@ -8,11 +8,12 @@ from routers.grid.crud import (db_get_grid_cell_data,
                                db_get_grid_extra_cell_data,
                                db_update_grid_cell_data,
                                db_delete_extra_cell_order)
+from routers.storages.crud import db_update_storage_last_change
 from routers.wheelstacks.crud import db_find_wheelstack_by_object_id, db_update_wheelstack
 from routers.orders.crud import db_delete_order, db_create_order
-from constants import (DB_PMK_NAME, CLN_ACTIVE_ORDERS, CLN_GRID, CLN_WHEELSTACKS,
+from constants import (CLN_STORAGES, DB_PMK_NAME, CLN_ACTIVE_ORDERS, CLN_GRID, CLN_WHEELSTACKS,
                        ORDER_STATUS_CANCELED, CLN_CANCELED_ORDERS, PRES_TYPE_GRID,
-                       PRES_TYPE_PLATFORM, CLN_BASE_PLATFORM, PS_BASE_PLATFORM, PS_GRID)
+                       PRES_TYPE_PLATFORM, CLN_BASE_PLATFORM, PS_BASE_PLATFORM, PS_GRID, PS_STORAGE)
 from utility.utilities import time_w_timezone
 from routers.orders.orders_completion import update_placement_cell
 
@@ -367,6 +368,7 @@ async def orders_cancel_move_from_storage_to_grid(
         )
     source_wheelstack_data['blocked'] = False
     source_wheelstack_data['lastOrder'] = order_data['_id']
+    source_id: ObjectId = order_data['source']['placementId']
     async with (await db.start_session()) as session:
         async with session.start_transaction():
             await db_update_grid_cell_data(
@@ -382,6 +384,11 @@ async def orders_cancel_move_from_storage_to_grid(
             )
             canceled_order = await db_create_order(
                 order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS, session
+            )
+            # Update source storage
+            source_identifiers: list[dict] = [{'_id': source_id}]
+            await db_update_storage_last_change(
+                source_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
             )
             return canceled_order.inserted_id
 
@@ -473,35 +480,44 @@ async def orders_cancel_merge_wheelstacks(
     order_data['lastUpdated'] = cancellation_time
     source_wheelstack_id: ObjectId = order_data['affectedWheelStacks']['source']
     destination_wheelstack_id: ObjectId = order_data['affectedWheelStacks']['destination']
-    source_task = db_find_wheelstack_by_object_id(
-        source_wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
-    )
-    dest_task = db_find_wheelstack_by_object_id(
-        destination_wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
-    )
-    data_tasks = [source_task, dest_task]
-    data_result = await asyncio.gather(*data_tasks)
-    # + SOURCE + 
-    source_wheelstack_data = data_result[0]
-    if source_wheelstack_data is None:
-        raise HTTPException(
-            detail='source wheelstack used in order doesnt exist == corrupted order',
-            status_code=status.HTTP_404_NOT_FOUND,
+    wheelstacks_data_tasks = []
+    # 0 - source wheelstack | 1 - dest wheelstack
+    wheelstacks_data_tasks.append(
+        db_find_wheelstack_by_object_id(
+            source_wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
         )
+    )
+    wheelstacks_data_tasks.append(
+        db_find_wheelstack_by_object_id(
+            destination_wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
+        )
+    )
+    data_result = await asyncio.gather(*wheelstacks_data_tasks)
+    async def validate_wheelstack(order_data: dict, wheelstack_data: dict) -> None:
+        if wheelstack_data is None:
+            raise HTTPException(
+                detail=f'`wheelstack` => {wheelstack_data['_id']} used in order => {order_data['_id']}' \
+                        'doesnt exist == corrupted order',
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+    source_wheelstack_data = data_result[0]
+    destination_wheelstack_data = data_result[1]
+    # Validate existence
+    validate_tasks = []
+    validate_tasks.append(
+        validate_wheelstack(order_data, source_wheelstack_data)
+    )
+    validate_tasks.append(
+        validate_wheelstack(order_data, destination_wheelstack_data)
+    )
+    await asyncio.gather(*validate_tasks)
+    # Update state
     source_wheelstack_data['blocked'] = False
     source_wheelstack_data['lastOrder'] = order_data['_id']
-    # - SOURCE -
-    # + DESTINATION +
-    destination_wheelstack_data = data_result[1]
-    if destination_wheelstack_data is None:
-        raise HTTPException(
-            detail='destination wheelstack used in order doesnt exist == corrupted order',
-            status_code=status.HTTP_404_NOT_FOUND,
-        )
     destination_wheelstack_data['blocked'] = False
     destination_wheelstack_data['lastOrder'] = order_data['_id']
-    # - DESTINATION -
     source_placement_id: ObjectId = order_data['source']['placementId']
+    source_placement_type: str = order_data['source']['placementType']
     destination_placement_id: ObjectId = order_data['destination']['placementId']
     async with (await db.start_session()) as session:
         async with session.start_transaction():
@@ -511,10 +527,19 @@ async def orders_cancel_merge_wheelstacks(
                 'blocked': False,
                 'blockedBy': None
             }
-            session_tasks.append(
-                update_placement_cell(
-                    order_data['source'], unblock_cell_data, db, session, record_both
-            ))
+            # For now we only allow to merge FROM `storage`s.
+            if source_placement_type == PS_STORAGE:
+                storage_identifiers: list[dict] = [{'_id': source_placement_id}]
+                session_tasks.append(
+                    db_update_storage_last_change(
+                        storage_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
+                    )
+                )
+            else:
+                session_tasks.append(
+                    update_placement_cell(
+                        order_data['source'], unblock_cell_data, db, session, record_both
+                ))
             session_tasks.append(
                 update_placement_cell(
                     order_data['destination'], unblock_cell_data, db, session, True

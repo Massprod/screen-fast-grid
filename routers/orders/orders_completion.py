@@ -2,7 +2,7 @@ import asyncio
 from loguru import logger
 from bson import ObjectId
 from fastapi import HTTPException, status
-from routers.storages.crud import db_get_storage_by_object_id, db_storage_place_wheelstack, \
+from routers.storages.crud import db_get_storage_by_object_id, db_storage_get_placed_wheelstack, db_storage_place_wheelstack, \
     db_storage_delete_placed_wheelstack
 from utility.utilities import time_w_timezone, get_object_id
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
@@ -1041,7 +1041,7 @@ async def validate_wheelstack_data(
         )
     wheelstack_row: str = wheelstack_data['rowPlacement']
     wheelstack_col: str = wheelstack_data['colPlacement']
-    if cell_row != wheelstack_row or cell_col != wheelstack_col:
+    if placement_type != PS_STORAGE and (cell_row != wheelstack_row or cell_col != wheelstack_col):
         msg_string = f'Corrupted cell = {cell_row}|{cell_col} in `{placement_type}` = {placement_id}.' \
                      f' Marks `wheelstack` = {wheelstack_id} as placed on it, but it have a different placement.'
         raise HTTPException(
@@ -1081,6 +1081,30 @@ async def update_placement_cell(
         )
 
 
+async def check_storage_wheelstack(
+        order_data: dict,
+        db: AsyncIOMotorClient,
+) -> None:
+    source_tasks = []
+    source_tasks.append(
+        get_object_id(order_data['source']['placementId'])
+    )
+    source_tasks.append(
+        get_object_id(order_data['affectedWheelStacks']['source'])
+    )
+    source_results = await asyncio.gather(*source_tasks)
+    source_id: ObjectId = source_results[0]
+    source_wheelstack_id: ObjectId = source_results[1]
+    storage_data = await db_storage_get_placed_wheelstack(
+        source_id, '', source_wheelstack_id, db, DB_PMK_NAME, CLN_STORAGES
+    )
+    if storage_data is None:
+        raise HTTPException(
+            detail=f'Corrupted order {order_data['_id']} marks storage for merge with non existing `wheelstack` => {source_wheelstack_id}',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+
 async def orders_complete_merge_wheelstacks(
         order_data: dict,
         db: AsyncIOMotorClient,
@@ -1101,47 +1125,72 @@ async def orders_complete_merge_wheelstacks(
     destination_row: str = order_data['destination']['rowPlacement']
     destination_col: str = order_data['destination']['columnPlacement']
     # + Gather source|dest cells data +
-    source_cell_task = get_placement_cell_data(
-        source_id, source_type, source_row, source_col, db
+    cell_data_tasks = []
+    if source_type == PS_STORAGE:
+        cell_data_tasks.append(
+            check_storage_wheelstack(
+                order_data, db,
+            )
+        )
+    else:
+        cell_data_tasks.append(
+            get_placement_cell_data(
+                source_id, source_type, source_row, source_col, db
+            )
+        )
+    cell_data_tasks.append(
+        get_placement_cell_data(
+            destination_id, destination_type, destination_row, destination_col, db
+        )
     )
-    destination_cell_task = get_placement_cell_data(
-        destination_id, destination_type, destination_row, destination_col, db
-    )
-    cell_data_tasks = [source_cell_task, destination_cell_task]
     cell_data_results = await asyncio.gather(*cell_data_tasks)
-    source_cell_placement_data = cell_data_results[0]
-    destination_placement_cell_data = cell_data_results[1]
+    cell_validate_tasks = []
+    if source_type != PS_STORAGE:
+        source_cell_placement_data = cell_data_results[0]
+        cell_validate_tasks.append(
+            validate_cell_data(order_data, True, source_cell_placement_data)
+        )
+    destination_placement_cell_data = cell_data_results[-1]
     # - Gather source|dest cells data -
     # + Validate source|dest cells +
-    source_cell_validate = validate_cell_data(order_data, True, source_cell_placement_data)
-    destination_cell_validate = validate_cell_data(order_data, False, destination_placement_cell_data)
-    cell_validate_tasks = [source_cell_validate, destination_cell_validate]
+    cell_validate_tasks.append(
+        validate_cell_data(order_data, False, destination_placement_cell_data)
+    )
     cell_validate_results = await asyncio.gather(*cell_validate_tasks)
-    source_cell_data = cell_validate_results[0]
-    destination_cell_data = cell_validate_results[1]
+    if source_type != PS_STORAGE:
+        source_cell_data = cell_validate_results[0]
+    destination_cell_data = cell_validate_results[-1]
     # - Validate source|dest cells -
     # + Gather source|dest wheelstacks data +
     source_wheelstack_id: ObjectId = order_data['affectedWheelStacks']['source']
     destination_wheelstack_id: ObjectId = order_data['affectedWheelStacks']['destination']
-    source_wheelstack_data_task = db_find_wheelstack_by_object_id(
-        source_wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
+    wheelstacks_data_tasks = []
+    wheelstacks_data_tasks.append(
+        db_find_wheelstack_by_object_id(
+            source_wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
+        )
     )
-    destination_wheelstack_data_task = db_find_wheelstack_by_object_id(
-        destination_wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
+    wheelstacks_data_tasks.append(
+        db_find_wheelstack_by_object_id(
+            destination_wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
+        )
     )
-    wheelstacks_data_tasks = [source_wheelstack_data_task, destination_wheelstack_data_task]
     wheelstacks_data_results = await asyncio.gather(*wheelstacks_data_tasks)
     # - Gather source|dest wheelstacks data -
     source_wheelstack_data = wheelstacks_data_results[0]
     destination_wheelstack_data = wheelstacks_data_results[1]
     # + Valide source|dest wheelstacks +
-    source_wheelstack_validate = validate_wheelstack_data(
-        source_wheelstack_data, True, order_data
+    wheelstacks_validate_tasks = []
+    wheelstacks_validate_tasks.append(
+        validate_wheelstack_data(
+            source_wheelstack_data, True, order_data
+        )
     )
-    destination_wheelstack_validate = validate_wheelstack_data(
-        destination_wheelstack_data, False, order_data
+    wheelstacks_validate_tasks.append(
+        validate_wheelstack_data(
+            destination_wheelstack_data, False, order_data
+        )
     )
-    wheelstacks_validate_tasks = [source_wheelstack_validate, destination_wheelstack_validate]
     await asyncio.gather(*wheelstacks_validate_tasks)
     # - Valide source|dest wheelstacks -
     source_wheels_count: int = len(source_wheelstack_data['wheels'])
@@ -1158,14 +1207,24 @@ async def orders_complete_merge_wheelstacks(
         async with session.start_transaction():
             update_both = True if source_id != destination_id else False
             transaction_tasks = []
-            # + Placement cells update + 
-            source_cell_data['blocked'] = False
-            source_cell_data['blockedBy'] = None
-            source_cell_data['wheelStack'] = None
-            transaction_tasks.append(
-                update_placement_cell(
-                    order_data['source'], source_cell_data, db, session, update_both
-            ))
+            # + Placement cells update +
+            # For now only allow merge FROM `storage`s
+            if source_type == PS_STORAGE:
+                source_storage_id: ObjectId = await get_object_id(order_data['source']['placementId']) 
+                transaction_tasks.append(
+                    db_storage_delete_placed_wheelstack(
+                        source_storage_id, '', source_wheelstack_id,
+                        db, DB_PMK_NAME, CLN_STORAGES, session, True
+                    )
+                )
+            else:
+                source_cell_data['blocked'] = False
+                source_cell_data['blockedBy'] = None
+                source_cell_data['wheelStack'] = None
+                transaction_tasks.append(
+                    update_placement_cell(
+                        order_data['source'], source_cell_data, db, session, update_both
+                ))
             destination_cell_data['blocked'] = False
             destination_cell_data['blockedBy'] = None
             destination_cell_data['wheelStack'] = destination_wheelstack_data['_id']

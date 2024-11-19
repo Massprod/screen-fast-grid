@@ -212,6 +212,7 @@ class FromStorageOrderTypes(str, Enum):
     moveWholeStack = ORDER_MOVE_WHOLE_STACK
     moveToStorage = ORDER_MOVE_TO_STORAGE
     moveToLaboratory = ORDER_MOVE_TO_LABORATORY
+    mergeWheelStacks = ORDER_MERGE_WHEELSTACKS
 
 
 class SourceFromStorage(BaseModel):

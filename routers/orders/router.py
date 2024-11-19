@@ -43,6 +43,7 @@ from routers.orders.models.models import (
 )
 from routers.orders.orders_creation import (
     orders_create_merge_wheelstacks,
+    orders_create_move_from_storage_merge,
     orders_create_move_whole_wheelstack,
     orders_create_move_to_laboratory,
     orders_create_move_to_processing,
@@ -391,6 +392,8 @@ async def route_post_create_order_move_from_storage(
     created_order_id: ObjectId | None = None
     if ORDER_MOVE_WHOLE_STACK == data['orderType']:
         created_order_id = await orders_create_move_from_storage_whole_stack(db, data)
+    elif ORDER_MERGE_WHEELSTACKS == data['orderType']:
+        created_order_id = await orders_create_move_from_storage_merge(db, data)
     elif ORDER_MOVE_TO_PROCESSING == data['orderType']:
         created_order_id = await orders_create_move_to_pro_rej_from_storage(db, data, True)
     elif ORDER_MOVE_TO_REJECTED == data['orderType']:
@@ -399,7 +402,6 @@ async def route_post_create_order_move_from_storage(
         created_order_id = await orders_create_move_from_storage_to_storage_whole_stack(db, data)
     elif ORDER_MOVE_TO_LABORATORY == data['orderType']:
         created_order_id = await orders_create_move_from_storage_to_lab(db, data)
-    # TODO: What about merge in storages?
     # + BG record +
     source_id = await get_object_id(data['source']['storageId'])
     source_type = PS_STORAGE

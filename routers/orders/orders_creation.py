@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 
 from bson import ObjectId
 from loguru import logger
@@ -6,7 +7,7 @@ from fastapi import HTTPException, status
 from routers.orders.crud import db_create_order
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from routers.storages.crud import db_get_storage_by_name, db_get_storage_by_object_id, db_storage_get_placed_wheelstack
+from routers.storages.crud import db_get_storage_by_name, db_get_storage_by_object_id, db_storage_get_placed_wheelstack, db_update_storage_last_change
 from utility.utilities import get_object_id, time_w_timezone, orders_creation_attempt_string, \
     orders_corrupted_cell_non_existing_wheelstack, orders_corrupted_cell_blocked_wheelstack
 from routers.grid.crud import (db_get_grid_cell_data, db_update_grid_cell_data,
@@ -22,7 +23,8 @@ from constants import (PRES_TYPE_GRID, PRES_TYPE_PLATFORM,
                        ORDER_STATUS_PENDING, CLN_ACTIVE_ORDERS, ORDER_MOVE_WHOLE_STACK,
                        EE_HAND_CRANE, EE_GRID_ROW_NAME, CLN_WHEELS, EE_LABORATORY,
                        ORDER_MOVE_TO_LABORATORY, ORDER_MOVE_TO_PROCESSING, ORDER_MOVE_TO_REJECTED, MSG_TESTS_NOT_DONE,
-                       MSG_TESTS_FAILED, ORDER_MOVE_TO_STORAGE, CLN_STORAGES, PS_STORAGE, PS_GRID, PS_BASE_PLATFORM)
+                       MSG_TESTS_FAILED, ORDER_MOVE_TO_STORAGE, CLN_STORAGES, PS_STORAGE, PS_GRID, PS_BASE_PLATFORM,
+                       WS_MAX_WHEELS, ORDER_MERGE_WHEELSTACKS)
 from routers.batch_numbers.crud import db_find_batch_number
 
 
@@ -829,10 +831,14 @@ async def orders_create_bulk_move_to_pro_rej_orders(
                         grid_cells_to_update[result['sourceId']] = [result]
                     else:
                         grid_cells_to_update[result['sourceId']].append(result)
+            update_tasks = []
             for source_id, results_data in grid_cells_to_update.items():
-                await db_update_grid_cells_data(
-                    source_id, results_data, db, DB_PMK_NAME, CLN_GRID, session, record_change=True,
+                update_tasks.append(
+                    db_update_grid_cells_data(
+                        source_id, results_data, db, DB_PMK_NAME, CLN_GRID, session, record_change=True,
+                    )
                 )
+            await asyncio.gather(*update_tasks)
             return orders
 # ---
 
@@ -1142,6 +1148,10 @@ async def orders_create_move_to_storage(db: AsyncIOMotorClient, order_data: dict
                 source_wheelstack_data, source_wheelstack_data['_id'],
                 db, DB_PMK_NAME, CLN_WHEELSTACKS, session
             )
+            storage_identifiers = [{'_id': storage_id}]
+            await db_update_storage_last_change(
+                storage_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
+            )
             return created_order_id
 
 
@@ -1241,6 +1251,11 @@ async def orders_create_move_from_storage_whole_stack(
             await db_update_grid_cell_data(
                 destination_id, destination_row, destination_col,
                 destination_cell_data, db, DB_PMK_NAME, CLN_GRID, session, True
+            )
+            # Update source storage
+            source_identifiers: list[dict] = [{'_id': storage_id}]
+            await db_update_storage_last_change(
+                source_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
             )
             return created_order_id
 
@@ -1358,6 +1373,10 @@ async def orders_create_move_to_pro_rej_from_storage(
                 destination_id, destination_col, created_order_id,
                 db, DB_PMK_NAME, CLN_GRID, session, True
             )
+            source_identifiers = [{'_id': storage_id}]
+            await db_update_storage_last_change(
+                source_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
+            )
             return created_order_id
 
 
@@ -1444,6 +1463,10 @@ async def orders_create_move_from_storage_to_storage_whole_stack(
                 source_wheelstack_data, source_wheelstack_data['_id'],
                 db, DB_PMK_NAME, CLN_WHEELSTACKS, session, True
             )
+            storage_identifiers = [{'_id': source_storage_id}, {'_id': destination_storage_id}]
+            await db_update_storage_last_change(
+                storage_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
+            )
             return created_order_id
 
 
@@ -1529,4 +1552,220 @@ async def orders_create_move_from_storage_to_lab(
                 destination_id, destination_extra_element, created_order_id,
                 db, DB_PMK_NAME, CLN_GRID, session, True
             )
+            storage_identifiers = [{'_id': source_storage_id}]
+            await db_update_storage_last_change(
+                storage_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
+            )
             return created_order_id
+        
+
+# TODO: refactor when 1st .v. done.
+async def validate_wheelstack(source_id, wheelstack_data) -> None:
+    if wheelstack_data is None:
+        raise HTTPException(
+            detail=f'`wheelstack` = {source_id}. Not Found.',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    if wheelstack_data['blocked']:
+        raise HTTPException(
+            detail=f'`wheelstack` is already blocked',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+  
+
+async def validate_storage(source_id, storage_data) -> None:
+    if storage_data is None:
+        raise HTTPException(
+            detail=f'`wheelstack` exists but not placed in the `storage` = {source_id}',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+
+async def validate_cell(
+        placement_id: ObjectId, placement_row: str,
+        placement_col: str, destination_data: dict | None, source_wheelstack_data: dict, db: AsyncIOMotorClient
+) -> dict:
+    if destination_data is None:
+        raise HTTPException(
+            detail=f'Destination cell or placement doesnt exists. Not Found. Destination `ObjectId` => {placement_id}',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    cell_data = destination_data['rows'][placement_row]['columns'][placement_col]
+    if (cell_data['blocked']
+        or cell_data['blockedBy']):
+        raise HTTPException(
+            detail=f'Destination cell is `blocked`',
+            status_code= status.HTTP_403_FORBIDDEN,
+        )
+    dest_wheelstack_id = cell_data['wheelStack']
+    dest_wheelstack_data = await db_find_wheelstack_by_object_id(
+        dest_wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
+    )
+    if dest_wheelstack_data is None:
+        raise HTTPException(
+            detail=f'Corrupted cell in `grid` _id = {placement_id} row = {placement_row} | col = {placement_col}.' \
+                   f'Marks `wheelstack` with _id = {dest_wheelstack_id} as placed, but it doesnt exist',
+            status_code=status.HTTP_403_NOT_FOUND,
+        )
+    if source_wheelstack_data['_id'] == dest_wheelstack_data['_id']:
+        raise HTTPException(
+            detail=f'Same `wheelstack` cant be used as source and dest',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    source_batch: str = source_wheelstack_data['batchNumber']
+    dest_batch: str = dest_wheelstack_data['batchNumber']
+    if source_batch != dest_batch:
+        raise HTTPException(
+            detail=f'Chosen for merge `wheelstack` have different `batchNumber`',
+            status_code=status.HTTP_403_FORBIDDEN, 
+        )
+    source_wheels: list[ObjectId] = source_wheelstack_data['wheels']
+    dest_wheels: list[ObjectId] = dest_wheelstack_data['wheels']
+    merged_wheels: int = len(source_wheels) + len(dest_wheels)
+    if WS_MAX_WHEELS < merged_wheels:
+        raise HTTPException(
+            detail=f'Merged `wheelstack` will exceed wheels limit => result {merged_wheels} > {WS_MAX_WHEELS}',
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    return {
+        'cell_data': cell_data,
+        'wheelstack_data': dest_wheelstack_data
+    }
+
+
+async def orders_create_move_from_storage_merge(
+        db: AsyncIOMotorClient,
+        order_data: dict,
+) -> ObjectId:
+    # 0 - sourceWheelstack | 1 - sourceStorage | 2 - destPlacement
+    object_id_convert_tasks = []
+    object_id_convert_tasks.append(
+        get_object_id(order_data['source']['wheelstackId'])
+    )
+    object_id_convert_tasks.append(
+        get_object_id(order_data['source']['storageId'])
+    )
+    object_id_convert_tasks.append(
+        get_object_id(order_data['destination']['placementId'])
+    )
+    id_convert_results = await asyncio.gather(*object_id_convert_tasks)
+    source_wheelstack_id: ObjectId = id_convert_results[0]
+    source_storage_id: ObjectId = id_convert_results[1]
+    # Only moving to `grid`s
+    destination_placement_id: ObjectId = id_convert_results[2]
+    destination_placement_row = order_data['destination']['rowPlacement']
+    destination_placement_col = order_data['destination']['columnPlacement']
+    # 0 - source wheelstack | 1 - source storage | 2 - dest placement
+    check_tasks = []
+    check_tasks.append(
+        db_find_wheelstack_by_object_id(
+            source_wheelstack_id, db, DB_PMK_NAME, CLN_WHEELSTACKS
+        )
+    )
+    check_tasks.append(
+        db_storage_get_placed_wheelstack(
+            source_storage_id, '', source_wheelstack_id,
+            db, DB_PMK_NAME, CLN_STORAGES
+        )
+    )
+    check_tasks.append(
+        db_get_grid_cell_data(
+            destination_placement_id, destination_placement_row, destination_placement_col,
+            db, DB_PMK_NAME, CLN_GRID
+        )
+    )
+    check_results = await asyncio.gather(*check_tasks)
+    wheelstack_data = check_results[0]
+    storage_data = check_results[1]
+    dest_data = check_results[2]
+    # 0 - wheelstack exists + not blocked
+    # 1 - storage exists and contains source wheelstack
+    # 2 - destination exists and placed wheelstack available for merging
+    validate_tasks = []
+    validate_tasks.append(
+        validate_wheelstack(source_wheelstack_id, wheelstack_data)
+    )
+    validate_tasks.append(
+        validate_storage(source_storage_id, storage_data)
+    )
+    validate_tasks.append(
+        validate_cell(
+            destination_placement_id, destination_placement_row,
+            destination_placement_col, dest_data, wheelstack_data, db
+        )
+    )
+    validate_results = await asyncio.gather(*validate_tasks)
+    destination_cell_data = validate_results[2]['cell_data']
+    destination_wheelstack_data = validate_results[2]['wheelstack_data']
+    creation_time: datetime = await time_w_timezone()
+    new_order_data = {
+        'orderName': order_data['orderName'],
+        'orderDescription': order_data['orderDescription'],
+        'source': {
+            'placementType': PS_STORAGE,
+            'placementId': source_storage_id,
+            'rowPlacement': '0',
+            'columnPlacement': '0',
+        },
+        'destination': {
+            'placementType': PRES_TYPE_GRID,
+            'placementId': destination_placement_id,
+            'rowPlacement': destination_placement_row,
+            'columnPlacement': destination_placement_col,
+        },
+        'orderType': ORDER_MERGE_WHEELSTACKS,
+        'createdAt': creation_time,
+        'lastUpdated': creation_time,
+        'affectedWheelStacks': {
+            'source': wheelstack_data['_id'],
+            'destination': destination_wheelstack_data['_id'],
+        },
+        'affectedWheels': {
+            'source': wheelstack_data['wheels'],
+            'destination': destination_wheelstack_data['wheels']
+        },
+        'status': ORDER_STATUS_PENDING,
+    }
+    async with (await db.start_session()) as session:
+        async with session.start_transaction():
+            created_order = await db_create_order(
+                new_order_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            )
+            created_id: ObjectId = created_order.inserted_id
+            transaction_tasks = []
+            # Update source wheelstack
+            wheelstack_data['blocked'] = True
+            wheelstack_data['lastOrder'] = created_id
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    wheelstack_data, wheelstack_data['_id'], db,
+                    DB_PMK_NAME, CLN_WHEELSTACKS, session, True
+                )
+            )
+            # Update dest wheelstack
+            destination_wheelstack_data['blocked'] = True
+            destination_wheelstack_data['lastOrder'] = created_id
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    destination_wheelstack_data, destination_wheelstack_data['_id'], db,
+                    DB_PMK_NAME, CLN_WHEELSTACKS, session, True
+                )
+            )
+            # Update dest `grid`
+            destination_cell_data['blocked'] = True
+            destination_cell_data['blockedBy'] = created_id
+            transaction_tasks.append(
+                db_update_grid_cell_data(
+                    destination_placement_id, destination_placement_row, destination_placement_col,
+                    destination_cell_data, db, DB_PMK_NAME, CLN_GRID, session, True
+                )
+            )
+            # Update source storage
+            source_identifiers: list[dict] = [{'_id': source_storage_id}]
+            transaction_tasks.append(
+                db_update_storage_last_change(
+                    source_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session,
+                )
+            )
+            transaction_results = await asyncio.gather(*transaction_tasks)
+            return created_id

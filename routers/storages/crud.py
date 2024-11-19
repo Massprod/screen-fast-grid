@@ -1,3 +1,4 @@
+from datetime import datetime
 from bson import ObjectId
 from loguru import logger
 from fastapi import HTTPException, status
@@ -363,6 +364,7 @@ async def db_get_storages_with_elements_data(
         db_name: str,
         db_collection: str,
         session: AsyncIOMotorClientSession = None,
+        ignore_date: datetime = None, 
 ):
     db_info = await log_db_record(db_name, db_collection)
     logger.info(
@@ -373,11 +375,25 @@ async def db_get_storages_with_elements_data(
     # no identifier == search all
     if storage_identifiers:
         # Main `storage` document filter
-        _match = {
-            "$match": {
-                "$or": storage_identifiers
+        if ignore_date:
+            _match = {
+                "$match": {
+                    "$and": [
+                        {"$or": storage_identifiers},
+                        {
+                            "lastChange": {
+                                '$ne' : ignore_date
+                            }
+                        }
+                    ]
+                }
             }
-        }
+        else:        
+            _match = {
+                "$match": {
+                    "$or": storage_identifiers
+                }
+            }
         aggregate_queries.append(_match)
     # Replace `elements` with corresponding `wheelStack` collection documents
     _lookup_wheelstacks = {
@@ -450,5 +466,41 @@ async def db_get_storages_with_elements_data(
         )
         raise HTTPException(
             detail=f'Error while gathering `storage` data',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+async def db_update_storage_last_change(
+        storage_identifiers: list[dict],
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+        session: AsyncIOMotorClient = None,        
+):
+    """
+    Updates all found `storages` `lastChange`.
+    """
+    db_info = await log_db_record(db_name, db_collection)
+    logger.info('Attemt to update storage `lastChange`' + db_info)
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '$or': storage_identifiers
+    }
+    update = {
+        '$set': {
+            'lastChange': await time_w_timezone(),
+        }
+    }
+    try:
+        result = await collection.update_many(query, update, session=session)
+        logger.info('Successfully updated `storage`')
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        logger.error(
+            f'Error while updating `storage` record ' + db_info + error_extra
+        )
+        raise HTTPException(
+            detail=f'Error while updating record',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 from bson import ObjectId
 from loguru import logger
 from typing import Optional
@@ -73,6 +74,8 @@ async def route_get_storage(
                                    description="Indicator to include data of the `elements` inside of `storage`"),
         expanded_data: bool = Query(False,
                                     description="Expand all elements to include all data, not just `_id`s"),
+        ignore_date: datetime = Query(None,
+                                 description="Ignore documents with provided date"),
         db: AsyncIOMotorClient = Depends(mongo_client.depend_client),
         token_data: dict = get_role_verification_dependency(BASIC_PAGE_VIEW_ROLES),
 ):
@@ -88,7 +91,7 @@ async def route_get_storage(
             storage_id: ObjectId = get_object_id(storage_id)
         identifiers: list[dict] = [{'_id': storage_id}, {'name': storage_name}]
         data = await db_get_storages_with_elements_data(
-            identifiers, db, DB_PMK_NAME, CLN_STORAGES
+            identifiers, db, DB_PMK_NAME, CLN_STORAGES, None, ignore_date
         )
         if data:
             exist = data[0]
