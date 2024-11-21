@@ -227,3 +227,34 @@ async def db_find_batch_numbers_w_unplaced(
             detail='Error while searching `batchNumber` records',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+async def db_find_batch_numbers_many(
+        batch_numbers: list[str],
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+        session: AsyncIOMotorClient = None,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    db_log_data = await log_db_record(db_name, db_collection)
+    query = {
+        'batchNumber': {
+            '$in':  batch_numbers
+        }
+    }
+    logger.info(
+        f'Searching `batchNumber` records = {batch_numbers}' + db_log_data
+    )
+    try:
+        res = await collection.find(query, session=session).to_list(length=None)
+        return res
+    except PyMongoError  as error:
+        error_log: str = await log_db_error_record(error)
+        logger.error(
+            f'Error while searching `batchNumber`' + error_log + db_log_data
+        )
+        raise HTTPException(
+            detail='Error while seaching `batchNumber` records',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
