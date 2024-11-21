@@ -260,9 +260,10 @@ async def orders_complete_move_to_processing(order_data: dict, db: AsyncIOMotorC
     source_cell_data['blocked'] = False
     async with (await db.start_session()) as session:
         async with session.start_transaction():
+            update_both: bool = False if source_id == dest_id else True
             await db_update_grid_cell_data(
                 source_id, source_row, source_col, source_cell_data,
-                db, DB_PMK_NAME, CLN_GRID, session, False
+                db, DB_PMK_NAME, CLN_GRID, session, update_both
             )
             # -5- <- Delete order from destination element
             await db_delete_extra_cell_order(
@@ -380,9 +381,10 @@ async def orders_complete_move_to_rejected(order_data: dict, db: AsyncIOMotorCli
     source_cell_data['blocked'] = False
     async with (await db.start_session()) as session:
         async with session.start_transaction():
+            update_both: bool = False if source_id == dest_id else True
             await db_update_grid_cell_data(
                 source_id, source_row, source_col, source_cell_data,
-                db, DB_PMK_NAME, CLN_GRID, session, False
+                db, DB_PMK_NAME, CLN_GRID, session, update_both
             )
             # -5- <- Delete order from destination element
             await db_delete_extra_cell_order(
@@ -519,9 +521,10 @@ async def orders_complete_move_to_laboratory(order_data: dict, db: AsyncIOMotorC
         source_wheelstack_data['status'] = PS_SHIPPED
     async with (await db.start_session()) as session:
         async with session.start_transaction():
+            update_both: bool = False if source_id == dest_id else True
             await db_update_grid_cell_data(
                 source_id, source_row, source_col, source_cell_data, db,
-                DB_PMK_NAME, CLN_GRID, session, False
+                DB_PMK_NAME, CLN_GRID, session, update_both
             )
             # -5- <- Delete order from destination element
             await db_delete_extra_cell_order(
