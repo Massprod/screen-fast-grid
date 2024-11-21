@@ -20,7 +20,6 @@ from utility.utilities import (
 )
 from .crud import (
     get_grid_by_object_id,
-    grid_make_json_friendly,
     place_wheelstack_in_grid,
     create_grid,
     block_grid_cell,
@@ -492,20 +491,28 @@ async def route_patch_assign_platform(
     current_platforms: set[str] = {
         object['platformName'] for object in grid_assigned
     }
-    correct_platforms: list[str] = []
-    for platform in assign_platforms:
-        if platform in current_platforms:
-            continue
+    
+    async def platform_handler(platformName: str) -> dict[str,  ObjectId | str] | None:
         platform_exists = await get_platform_by_name(
-            platform, db, DB_PMK_NAME, CLN_BASE_PLATFORM, False
+            platformName, db, DB_PMK_NAME, CLN_BASE_PLATFORM, False
         )
-        if (platform_exists is None
-            or ('assignedPlatforms' in grid_exists and platform in grid_exists['assignedPlatforms'])):
-            continue
-        correct_platforms.append({
+        if platform_exists is None:
+            return None
+        platform_record = {
             'platformId': platform_exists['_id'],
             'platformName': platform_exists['name'],
-        })
+        }
+        return platform_record
+
+    platform_tasks = []
+    for platformName in assign_platforms:
+        if platformName in current_platforms:
+            continue
+        platform_tasks.append(
+            platform_handler(platformName)
+        )
+    platform_results = await asyncio.gather(*platform_tasks)
+    correct_platforms = [platform for platform in platform_results if platform is not None]
     if not correct_platforms:
         return Response(status_code=status.HTTP_304_NOT_MODIFIED)
     result = await db_grid_add_assigned_platforms(
