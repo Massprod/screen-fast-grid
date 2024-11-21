@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 
 from bson import ObjectId
 from loguru import logger
@@ -78,10 +79,18 @@ async def get_grid_by_object_id(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
+        ignored_dates: list[datetime] = []
 ):
     collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': grid_object_id,
+    }
+    if ignored_dates:
+        query['lastChange'] = {
+            '$nin': ignored_dates
+        }
     try:
-        grid = await collection.find_one({'_id': grid_object_id})
+        grid = await collection.find_one(query)
         return grid
     except PyMongoError as error:
         logger.error(f'Error while searching in DB: {error}')
@@ -691,6 +700,7 @@ async def db_grid_add_assigned_platforms(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
+        record_change: bool = True,
 ):
     collection = await get_db_collection(
         db, db_name, db_collection
@@ -707,6 +717,10 @@ async def db_grid_add_assigned_platforms(
             }
         }
     }
+    if record_change:
+        update['$set'] = {
+            'lastChange': await time_w_timezone(),
+        }
     logger.info(
         log_str + db_info
     )
