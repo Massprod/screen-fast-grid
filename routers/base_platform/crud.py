@@ -1,3 +1,4 @@
+from datetime import datetime
 from bson import ObjectId
 from loguru import logger
 from pymongo.errors import PyMongoError, DuplicateKeyError
@@ -75,10 +76,18 @@ async def get_platform_by_object_id(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
+        ignored_dates: list[datetime] = [],
 ):
     collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': platform_object_id,
+    }
+    if ignored_dates:
+        query['lastChange'] = {
+            '$nin': ignored_dates,
+        }
     try:
-        platform = await collection.find_one({'_id': platform_object_id})
+        platform = await collection.find_one(query)
         return platform
     except PyMongoError as error:
         logger.error(f'Error while searching in DB: {error}')
