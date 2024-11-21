@@ -182,8 +182,42 @@ async def db_history_get_orders_by_placement(
     except PyMongoError as error:
         error_extra: str = await log_db_error_record(error)
         logger.error(
-            f'Error while gathering `ordersDat` for `placementId` => {placement_id}'
+            f'Error while gathering `ordersData` for `placementId` => {placement_id}'
             f' of type {placement_type}' + db_info + error_extra
+        )
+        raise HTTPException(
+            detail='Error while gathering data',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+async def db_get_orders_by_id_many(
+        orders: list[ObjectId],
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+        session: AsyncIOMotorClient = None,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    db_info = await log_db_record(db_name, db_collection)
+    logger.info(
+        f'Attempt to gather `ordersData`' + db_info
+    )
+    query = {
+        '_id': {
+            '$in': orders,
+        }
+    }
+    try:
+        result = await collection.find(query, session=session).to_list(length=None)
+        logger.info(
+            f'Successfully gathered `ordersData`' + db_info
+        )
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        logger.error(
+            f'Error while gatherng `ordersData`' + db_info + error_extra
         )
         raise HTTPException(
             detail='Error while gathering data',
