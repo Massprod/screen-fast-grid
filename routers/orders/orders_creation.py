@@ -824,6 +824,7 @@ async def orders_create_bulk_move_to_pro_rej_orders(
                 destination_id, destination_element_name, orders,
                 db, DB_PMK_NAME, CLN_GRID, session, True
             )
+            update_tasks = []
             grid_cells_to_update = {}
             for result in results:
                 if PS_GRID == result['sourceType']:
@@ -831,7 +832,13 @@ async def orders_create_bulk_move_to_pro_rej_orders(
                         grid_cells_to_update[result['sourceId']] = [result]
                     else:
                         grid_cells_to_update[result['sourceId']].append(result)
-            update_tasks = []
+                elif PS_STORAGE == result['sourceType']:
+                    storage_identifiers: dict = [{'_id': result['sourceId']}]
+                    update_tasks.append(
+                        db_update_storage_last_change(
+                            storage_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
+                        )
+                    )
             for source_id, results_data in grid_cells_to_update.items():
                 update_tasks.append(
                     db_update_grid_cells_data(
