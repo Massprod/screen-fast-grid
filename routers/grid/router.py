@@ -271,6 +271,7 @@ async def route_create_empty_grid(
         )
     correct_data = await collect_wheelstack_cells(preset_data)
     correct_data['name'] = cor_name
+    correct_data['assignedPlatforms'] = []
     res = await create_grid(correct_data, db, DB_PMK_NAME, CLN_GRID)
     logger.info(
         f'Successfully created a `grid` from `preset` with `objectId` = {preset_object_id}.'
