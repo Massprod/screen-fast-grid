@@ -72,6 +72,8 @@ async def websocket_verify_multi_roles_token(
         allowed_roles: set[str],
         token: dict,
 ):
+    if not valid_token_required:
+        return True
     allowed_roles_log: str = ' | '.join(allowed_roles)
     logger.info(
         f'Verifying access token for roles: {allowed_roles}'
