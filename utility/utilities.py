@@ -158,6 +158,21 @@ async def async_convert_object_id_and_datetime_to_str(doc):
         return doc
 
 
+async def async_convert_object_records(doc, type_converters: dict):
+    for type, converter in type_converters.items():
+        if isinstance(doc, type):
+            return converter(doc)
+    if isinstance(doc, dict):
+        # Convert dictionary values concurrently
+        tasks = {k: async_convert_object_records(v, type_converters) for k, v in doc.items()}
+        return {k: await v for k, v in tasks.items()}
+    elif isinstance(doc, list):
+        # Convert list values concurrently
+        tasks = [async_convert_object_records(v, type_converters) for v in doc]
+        return await asyncio.gather(*tasks)
+    return doc
+
+
 async def db_execute_free_find_one_query(
         query: dict,
         project: dict,
