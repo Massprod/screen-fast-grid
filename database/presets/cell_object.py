@@ -18,3 +18,11 @@ class GridObject:
         self.identifier = False
         self.wheelstack = False
         self.identifier_string = ''
+    
+    def get_dict(self):
+        return {
+            'wheelStack': self.wheelstack,
+            'whitespace': self.whitespace,
+            'identifier': self.identifier,
+            'identifierString': self.identifier_string,
+        }
