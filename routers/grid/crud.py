@@ -185,8 +185,7 @@ async def create_grid(
         'rows': preset_data['rows'],
         'extra': preset_data['extra'],
     }
-    if assignedPlatforms:
-        grid_data['assignedPlatforms'] = assignedPlatforms
+    grid_data['assignedPlatforms'] = assignedPlatforms
     collection = await get_db_collection(db, db_name, db_collection)
     db_log_data = await log_db_record(db_name, db_collection)
     logger.info(
