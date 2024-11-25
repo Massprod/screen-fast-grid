@@ -150,3 +150,9 @@ WS_CODES: dict[int, int] = {
     status.HTTP_409_CONFLICT: status.WS_1008_POLICY_VIOLATION,  # Conflict -> Policy Violation
     status.HTTP_500_INTERNAL_SERVER_ERROR: status.WS_1011_INTERNAL_ERROR,  # Internal Server Error -> Internal Error
 }
+
+# preset cell types
+PRESET_WHEELSTACK = 'wheelStack'
+PRESET_WHITESPACE = 'whitespace'
+PRESET_IDENTIFIER = 'identifier'
+PRESET_IDENTIFIER_STRING = 'identifierString'
