@@ -1,13 +1,14 @@
-from datetime import datetime
-import itertools
 import json
 import asyncio
-from bson import ObjectId
+import itertools
 from loguru import logger
+from bson import ObjectId
+from datetime import datetime
+from fastapi.websockets import WebSocketState
+from database.mongo_connection import mongo_client
 from motor.motor_asyncio import AsyncIOMotorClient
 from routers.base_platform.crud import get_platform_by_object_id
 from routers.batch_numbers.crud import db_find_batch_numbers_many, db_find_batch_numbers_w_unplaced
-from database.mongo_connection import mongo_client
 from auth.jwt_validation import websocket_verify_multi_roles_token
 from fastapi import (
     APIRouter,
@@ -35,13 +36,13 @@ from constants import (
     PT_GRID,
 )
 from routers.grid.crud import get_grid_by_object_id
-from routers.grid.data_gather import convert_and_store_threadpool
-from routers.history.history_actions import background_history_record
 from routers.orders.crud import db_get_orders_by_id_many
-from routers.storages.crud import db_get_storages_with_elements_data
-from routers.wheels.crud import db_find_many_wheels_by_id, db_find_wheels_free_fields
-from routers.wheelstacks.crud import db_history_get_placement_wheelstacks
+from routers.grid.data_gather import convert_and_store_threadpool
 from routers.wheelstacks.router import create_new_wheelstack_action
+from routers.storages.crud import db_get_storages_with_elements_data
+from routers.history.history_actions import background_history_record
+from routers.wheelstacks.crud import db_history_get_placement_wheelstacks
+from routers.wheels.crud import db_find_many_wheels_by_id, db_find_wheels_free_fields
 from utility.utilities import (
     async_convert_object_id_and_datetime_to_str,
     get_object_id,
@@ -299,7 +300,6 @@ async def websocket_endpoint(
             auth_token,
         )
     except WebSocketException as exception:
-        await websocket.close(code=exception.code)
         logger.error(f'WebSocket connection cloded, reason: {exception.reason}')
         del active_grid_page_connections[websocket]
         return
@@ -314,39 +314,34 @@ async def websocket_endpoint(
                     filter_req_data, cor_req_data, db
                 )
                 await websocket.send_text(result)
-
-            except asyncio.TimeoutError:
-                logger.warning("WebSocket connection timed out")
-                await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            except WebSocketDisconnect:
+                logger.info('Client disconnected')
                 break
             except WebSocketException as exception:
-                if exception.code == status.WS_1011_INTERNAL_ERROR:
-                    logger.error(f"WebSocket connection closed: {exception.reason}")
-                    await websocket.close(code=exception.code)
-                    del active_grid_page_connections[websocket]
+                if WebSocketState.CONNECTED != websocket.application_state:
                     break
                 logger.error(
-                    f'Websocket exception: {exception}'
+                    f'Websocket exception: {exception.reason}'
                 )
                 exception_data: dict = {
                     'type': 'error',
                     'code': exception.code,
                     'message': exception.reason,
                 }
-                await websocket.send_json(exception_data)
+                payload = json.dumps(exception_data)
+                await websocket.send_text(exception_data)
             except Exception as exception:
+                if WebSocketState.CONNECTED != websocket.application_state:
+                    break
                 exception_data: dict = {
                     'type': 'error',
                     'code': status.WS_1010_MANDATORY_EXT,
-                    'message': exception,
+                    'message': str(exception),
                 }
-                await websocket.send_json(exception_data)
+                payload = json.dumps(exception_data)
+                await websocket.send_text(payload)
                 break
-
-    except WebSocketDisconnect:
-        logger.info('Client disconnected')
     finally:
-        await websocket.close(code=status.WS_1000_NORMAL_CLOSURE)
         if websocket in active_grid_page_connections:
             del active_grid_page_connections[websocket]
             logger.info("WebSocket connection removed from active connections")
