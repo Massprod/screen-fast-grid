@@ -257,19 +257,20 @@ async def get_batch_main_data(
     filter_query: dict[str, dict] = create_filter(cor_search_value)
     # Always the same query, we either get date or not.
     # But, we can filter data for some period, with `startDate`, `endDate`.
-    try:
-        if startDate:
-            start_date = datetime.strptime(startDate, "%Y-%m-%d")
-        else:
-            start_date = datetime.min
-        if endDate:
-            end_date = datetime.strptime(endDate, "%Y-%m-%d") + timedelta(days=1)
-        else:
-            end_date = datetime.max
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid period dates format: {e}")
-    date_field = "createdAt" if createdAtPeriod else "laboratoryTestDate"
-    filter_query[date_field] = {"$gte": start_date, "$lte": end_date}
+    if startDate or endDate:
+        try:
+            if startDate:
+                start_date = datetime.strptime(startDate, "%Y-%m-%d")
+            else:
+                start_date = datetime.min
+            if endDate:
+                end_date = datetime.strptime(endDate, "%Y-%m-%d") + timedelta(days=1)
+            else:
+                end_date = datetime.max
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid period dates format: {e}")
+        date_field = "createdAt" if createdAtPeriod else "laboratoryTestDate"
+        filter_query[date_field] = {"$gte": start_date, "$lte": end_date}
     # We don't need wheels for the `main` table.
     projection = {
         'wheels': 0,
