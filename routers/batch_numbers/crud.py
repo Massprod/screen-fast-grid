@@ -23,6 +23,7 @@ async def db_create_batch_number(
 ):
     collection = await get_db_collection(db, db_name, db_collection)
     batch_number_data['createdAt'] = await time_w_timezone()
+    batch_number_data['wheels'] = []
     db_log_data = await log_db_record(db_name, db_collection)
     logger.info(
         f'Creating a new `batchNumber` record in `{db_collection}` collection' + db_log_data

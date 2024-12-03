@@ -26,11 +26,42 @@
     "laboratoryTestDate": {
       "bsonType": ["date", "null"],
       "description": "Latest Timestamp of conducted test"
+    },
+    "wheels": {
+      "bsonType": ["array"],
+      "description": "Data of wheels used for tests",
+      "items": {
+        "bsonType": "object",
+        "required": ["_id", "arrivalDate", "result", "testDate", "confirmedBy"],
+        "properties": {
+          "_id": {
+            "bsonType": "objectId",
+            "description": "ObjectId of the wheel"
+          },
+          "arrivalDate": {
+            "bsonType": "date",
+            "description": "Timestamp of time, when wheel is delivered to the lab"
+          },
+          "result": {
+            "bsonType": ["bool", "null"],
+            "description": "True == passed, False == failed, Null == notTested"
+          },
+          "testDate": {
+            "bsonType": ["date", "null"],
+            "description": "Timestamp of time when wheel was tested"
+          },
+          "confirmedBy": {
+            "bsonType": "objectId",
+            "description": "ObjectId of a user, confirmed result of the test"
+          }
+        }
+      }
     }
   },
     "indexes": [
-      {"keys": { "createdAt": -1 }, "options": { "name": "createdAt_desc_index" } },
+      { "keys": { "createdAt": -1 }, "options": { "name": "createdAt_desc_index" } },
       { "keys": { "batchNumber": 1 }, "options": {"unique": true, "name": "indexing by `batchId`" } },
-      { "keys": { "batchNumber": 1,  "laboratoryPassed": 1, "laboratoryTestDate": 1 }, "options": { "name": "indexing by all"} }
+      { "keys": { "batchNumber": 1,  "laboratoryPassed": 1, "laboratoryTestDate": 1 }, "options": { "name": "indexing by all"} },
+      { "keys": { "wheels._id": 1, "wheels.result": 1, "wheels.confirmedBy": 1, "wheels.testDate":  1 } }
     ]
 }
