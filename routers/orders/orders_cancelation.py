@@ -2,23 +2,33 @@ import asyncio
 from bson import ObjectId
 from loguru import logger
 from fastapi import HTTPException, status
+from utility.utilities import time_w_timezone
 from motor.motor_asyncio import AsyncIOMotorClient
+from routers.storages.crud import db_update_storage_last_change
+from routers.orders.crud import db_delete_order, db_create_order
+from routers.orders.orders_completion import update_placement_cell
+from routers.wheelstacks.crud import db_find_wheelstack_by_object_id, db_update_wheelstack
 from routers.base_platform.crud import db_get_platform_cell_data, db_update_platform_cell_data
 from routers.grid.crud import (
     db_get_grid_cell_data,
     db_get_grid_extra_cell_data,
     db_update_grid_cell_data
 )
-from routers.storages.crud import db_update_storage_last_change
-from routers.wheelstacks.crud import db_find_wheelstack_by_object_id, db_update_wheelstack
-from routers.orders.crud import db_delete_order, db_create_order
 from constants import (
-    CLN_STORAGES, DB_PMK_NAME, CLN_ACTIVE_ORDERS, CLN_GRID, CLN_WHEELSTACKS,
-    ORDER_STATUS_CANCELED, CLN_CANCELED_ORDERS, PRES_TYPE_GRID,
-    PRES_TYPE_PLATFORM, CLN_BASE_PLATFORM, PS_BASE_PLATFORM, PS_GRID, PS_STORAGE
+    CLN_STORAGES,
+    DB_PMK_NAME,
+    CLN_ACTIVE_ORDERS,
+    CLN_GRID,
+    CLN_WHEELSTACKS,
+    ORDER_STATUS_CANCELED,
+    CLN_CANCELED_ORDERS,
+    PRES_TYPE_GRID,
+    PRES_TYPE_PLATFORM,
+    CLN_BASE_PLATFORM,
+    PS_BASE_PLATFORM,
+    PS_GRID,
+    PS_STORAGE
 )
-from utility.utilities import time_w_timezone
-from routers.orders.orders_completion import update_placement_cell
 
 
 async def orders_cancel_basic_extra_element_moves(

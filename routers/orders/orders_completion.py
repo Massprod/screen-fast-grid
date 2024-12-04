@@ -264,7 +264,7 @@ async def orders_complete_move_to_processing(order_data: dict, db: AsyncIOMotorC
             if update_both:
                 transaction_tasks.append(
                     db_grid_update_last_change_time(
-                        dest_id, db, DB_PMK_NAME, CLN_GRID
+                        dest_id, db, DB_PMK_NAME, CLN_GRID, session
                     )
                 )
             # -5- <- Update `wheelStack` record
@@ -385,7 +385,7 @@ async def orders_complete_move_to_rejected(order_data: dict, db: AsyncIOMotorCli
             )
             if update_both:
                 db_grid_update_last_change_time(
-                    dest_id, db, DB_PMK_NAME, CLN_GRID
+                    dest_id, db, DB_PMK_NAME, CLN_GRID, session
                 )
             # -5- <- Update `wheelStack` record
             source_wheelstack_data['placement']['type'] = dest_type
@@ -524,7 +524,7 @@ async def orders_complete_move_to_laboratory(order_data: dict, db: AsyncIOMotorC
             )
             if update_both:
                 db_grid_update_last_change_time(
-                    dest_id, db, DB_PMK_NAME, CLN_GRID
+                    dest_id, db, DB_PMK_NAME, CLN_GRID, session
                 )
             # -5- <- Unblock source `wheelStack` + reshuffle wheels.
             transaction_tasks.append(
@@ -559,6 +559,17 @@ async def orders_complete_move_to_laboratory(order_data: dict, db: AsyncIOMotorC
             )
             # -8- <- Add order into `completedOrders`
             completion_time = await time_w_timezone()
+            # region labRebuild
+            target_batch_number = lab_wheel_data['batchNumber']
+            test_wheel_record: dict[str, ObjectId | str | None] = {
+                '_id': lab_wheel_data['_id'],
+                'arrivalDate': completion_time,
+                'result': None,
+                'testDate': None,
+                'confirmedBy': '',
+            }
+
+            # endregion labRebuild
             order_data['status'] = ORDER_STATUS_COMPLETED
             order_data['lastUpdated'] = completion_time
             order_data['completedAt'] = completion_time

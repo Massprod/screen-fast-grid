@@ -662,6 +662,7 @@ async def db_grid_update_last_change_time(
         db: AsyncIOMotorClient,
         db_name: str,
         db_collection: str,
+        session: AsyncIOMotorClientSession = None,
 ):
     collection = await get_db_collection(db, db_name, db_collection)
     query = {
@@ -673,7 +674,7 @@ async def db_grid_update_last_change_time(
         }
     }
     try:
-        result = await collection.update_one(query, update)
+        result = await collection.update_one(query, update, session=session)
         return result
     except PyMongoError as error:
         logger.error(f'Error while searching in {db_collection}: {error}')

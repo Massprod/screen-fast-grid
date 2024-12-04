@@ -1441,7 +1441,7 @@ async def orders_create_move_to_pro_rej_from_storage(
             )
             transaction_tasks.append(
                 db_grid_update_last_change_time(
-                    destination_id, db, DB_PMK_NAME, CLN_GRID, 
+                    destination_id, db, DB_PMK_NAME, CLN_GRID, session
                 )
             )
             source_identifiers = [{'_id': storage_id}]
@@ -1633,7 +1633,7 @@ async def orders_create_move_from_storage_to_lab(
             )
             transaction_tasks.append(
                 db_grid_update_last_change_time(
-                    destination_id, db, DB_PMK_NAME, CLN_GRID
+                    destination_id, db, DB_PMK_NAME, CLN_GRID, session
                 )
             )
             storage_identifiers = [{'_id': source_storage_id}]
