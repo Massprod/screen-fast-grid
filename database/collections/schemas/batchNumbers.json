@@ -51,7 +51,7 @@
             "description": "Timestamp of time when wheel was tested"
           },
           "confirmedBy": {
-            "bsonType": "str",
+            "bsonType": "string",
             "description": "`username` of a user, confirmed result of the test"
           }
         }
