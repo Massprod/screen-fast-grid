@@ -1,31 +1,68 @@
 import asyncio
-from datetime import datetime
-
-from bson import ObjectId
 from loguru import logger
+from bson import ObjectId
+from datetime import datetime
 from fastapi import HTTPException, status
 from routers.orders.crud import db_create_order
 from motor.motor_asyncio import AsyncIOMotorClient
-
-from routers.storages.crud import db_get_storage_by_name, db_get_storage_by_object_id, db_storage_get_placed_wheelstack, db_update_storage_last_change
-from utility.utilities import get_object_id, time_w_timezone, orders_creation_attempt_string, \
-    orders_corrupted_cell_non_existing_wheelstack, orders_corrupted_cell_blocked_wheelstack
-from routers.grid.crud import (db_get_grid_cell_data, db_update_grid_cell_data,
-                               db_get_grid_extra_cell_data, get_grid_preset_by_object_id,
-                               db_append_extra_cell_order, db_append_extra_cell_orders, db_update_grid_cells_data)
-from routers.wheelstacks.crud import db_find_wheelstack_by_object_id, db_update_wheelstack, \
-    db_find_all_pro_rej_available_in_placement, db_find_all_pro_rej_available
-from routers.base_platform.crud import db_get_platform_cell_data, db_update_platform_cell_data
 from routers.wheels.crud import db_find_wheel_by_object_id
-from constants import (PRES_TYPE_GRID, PRES_TYPE_PLATFORM,
-                       DB_PMK_NAME, CLN_GRID, CLN_BATCH_NUMBERS,
-                       CLN_WHEELSTACKS, CLN_BASE_PLATFORM,
-                       ORDER_STATUS_PENDING, CLN_ACTIVE_ORDERS, ORDER_MOVE_WHOLE_STACK,
-                       EE_HAND_CRANE, EE_GRID_ROW_NAME, CLN_WHEELS, EE_LABORATORY,
-                       ORDER_MOVE_TO_LABORATORY, ORDER_MOVE_TO_PROCESSING, ORDER_MOVE_TO_REJECTED, MSG_TESTS_NOT_DONE,
-                       MSG_TESTS_FAILED, ORDER_MOVE_TO_STORAGE, CLN_STORAGES, PS_STORAGE, PS_GRID, PS_BASE_PLATFORM,
-                       WS_MAX_WHEELS, ORDER_MERGE_WHEELSTACKS)
 from routers.batch_numbers.crud import db_find_batch_number
+from routers.base_platform.crud import db_get_platform_cell_data, db_update_platform_cell_data
+from routers.storages.crud import (
+    db_get_storage_by_name,
+    db_get_storage_by_object_id,
+    db_storage_get_placed_wheelstack,
+    db_update_storage_last_change
+)
+from utility.utilities import (
+    get_object_id,
+    time_w_timezone,
+    orders_creation_attempt_string,
+    orders_corrupted_cell_non_existing_wheelstack,
+    orders_corrupted_cell_blocked_wheelstack
+)
+from routers.grid.crud import (
+    db_get_grid_cell_data,
+    db_grid_update_last_change_time,
+    db_update_grid_cell_data,
+    db_get_grid_extra_cell_data,
+    get_grid_preset_by_object_id,
+    db_update_grid_cells_data
+)
+from routers.wheelstacks.crud import (
+    db_find_wheelstack_by_object_id,
+    db_update_wheelstack,
+    db_find_all_pro_rej_available_in_placement,
+    db_find_all_pro_rej_available
+)
+from constants import (
+    PRES_TYPE_GRID,
+    PRES_TYPE_PLATFORM,
+    DB_PMK_NAME,
+    CLN_GRID,
+    CLN_BATCH_NUMBERS,
+    CLN_WHEELSTACKS,
+    CLN_BASE_PLATFORM,
+    ORDER_STATUS_PENDING,
+    CLN_ACTIVE_ORDERS,
+    ORDER_MOVE_WHOLE_STACK,
+    EE_HAND_CRANE,
+    EE_GRID_ROW_NAME,
+    CLN_WHEELS,
+    EE_LABORATORY,
+    ORDER_MOVE_TO_LABORATORY,
+    ORDER_MOVE_TO_PROCESSING,
+    ORDER_MOVE_TO_REJECTED,
+    MSG_TESTS_NOT_DONE,
+    MSG_TESTS_FAILED,
+    ORDER_MOVE_TO_STORAGE,
+    CLN_STORAGES,
+    PS_STORAGE,
+    PS_GRID,
+    PS_BASE_PLATFORM,
+    WS_MAX_WHEELS,
+    ORDER_MERGE_WHEELSTACKS
+)
 
 
 # TODO: rebuild this garbage after everything
@@ -142,6 +179,7 @@ async def orders_create_move_whole_wheelstack(db: AsyncIOMotorClient, order_data
             created_order = await db_create_order(order_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session)
             created_order_id: ObjectId = created_order.inserted_id
             # Order Creation ---
+            transaction_tasks = []
             # We need to change in SOURCE:
             #  1. SourceCell should be `blocked` and `order` `objectId` placed in `blockedBy`.
             #  2. SourceWheelstack should be `blocked` and `order` `objectId` placed in `blockedBy`
@@ -153,19 +191,25 @@ async def orders_create_move_whole_wheelstack(db: AsyncIOMotorClient, order_data
             }
             if PRES_TYPE_GRID == source_type:
                 record_change = False if source_id == destination_id else True
-                await db_update_grid_cell_data(
-                    source_id, source_row, source_col, new_source_cell_data,
-                    db, DB_PMK_NAME, CLN_GRID, session, record_change
+                transaction_tasks.append(
+                    db_update_grid_cell_data(
+                        source_id, source_row, source_col, new_source_cell_data,
+                        db, DB_PMK_NAME, CLN_GRID, session, record_change
+                    )
                 )
             elif PRES_TYPE_PLATFORM == source_type:
-                await db_update_platform_cell_data(
-                    source_id, source_row, source_col, new_source_cell_data,
-                    db, DB_PMK_NAME, CLN_BASE_PLATFORM, session, True
+                transaction_tasks.append(
+                    db_update_platform_cell_data(
+                        source_id, source_row, source_col, new_source_cell_data,
+                        db, DB_PMK_NAME, CLN_BASE_PLATFORM, session, True
+                    )
                 )
             source_wheelstack_data['blocked'] = True
             source_wheelstack_data['lastOrder'] = created_order_id
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                )
             )
             # Source Change ---
             # We need to change in DESTINATION:
@@ -174,11 +218,14 @@ async def orders_create_move_whole_wheelstack(db: AsyncIOMotorClient, order_data
             destination_cell_data['wheelStack'] = None
             destination_cell_data['blocked'] = True
             destination_cell_data['blockedBy'] = created_order_id
-            await db_update_grid_cell_data(
-                destination_id, destination_row, destination_col,
-                destination_cell_data, db, DB_PMK_NAME, CLN_GRID, session, True
+            transaction_tasks.append(
+                db_update_grid_cell_data(
+                    destination_id, destination_row, destination_col,
+                    destination_cell_data, db, DB_PMK_NAME, CLN_GRID, session, True
+                )
             )
             # Destination change ---
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
             return created_order_id
 
 
@@ -332,6 +379,7 @@ async def orders_create_merge_wheelstacks(db: AsyncIOMotorClient, order_data: di
             created_order = await db_create_order(order_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session)
             created_order_id: ObjectId = created_order.inserted_id
             # Order Creation ---
+            transaction_tasks = []
             # We need to change in SOURCE:
             #  1. SourceCell should be `blocked` and `order` `objectId` placed in `blockedBy`.
             #  2. SourceWheelstack should be `blocked` and `order` `objectId` placed in `blockedBy`
@@ -343,19 +391,25 @@ async def orders_create_merge_wheelstacks(db: AsyncIOMotorClient, order_data: di
             }
             if PRES_TYPE_GRID == source_type:
                 record_change = False if source_id == destination_id else True
-                await db_update_grid_cell_data(
-                    source_id, source_row, source_col, new_source_cell_data,
-                    db, DB_PMK_NAME, CLN_GRID, session, record_change
+                transaction_tasks.append(
+                    db_update_grid_cell_data(
+                        source_id, source_row, source_col, new_source_cell_data,
+                        db, DB_PMK_NAME, CLN_GRID, session, record_change
+                    )
                 )
             elif PRES_TYPE_PLATFORM == source_type:
-                await db_update_platform_cell_data(
-                    source_id, source_row, source_col, new_source_cell_data,
-                    db, DB_PMK_NAME, CLN_BASE_PLATFORM, session, True
+                transaction_tasks.append(
+                    db_update_platform_cell_data(
+                        source_id, source_row, source_col, new_source_cell_data,
+                        db, DB_PMK_NAME, CLN_BASE_PLATFORM, session, True
+                    )
                 )
             source_wheelstack_data['blocked'] = True
             source_wheelstack_data['lastOrder'] = created_order_id
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                )
             )
             # Source Change ---
             # We need to change in DESTINATION:
@@ -364,16 +418,21 @@ async def orders_create_merge_wheelstacks(db: AsyncIOMotorClient, order_data: di
             # +++ Destination change
             destination_cell_data['blocked'] = True
             destination_cell_data['blockedBy'] = created_order_id
-            await db_update_grid_cell_data(
-                destination_id, destination_row, destination_col,
-                destination_cell_data, db, DB_PMK_NAME, CLN_GRID, session, True
+            transaction_tasks.append(
+                db_update_grid_cell_data(
+                    destination_id, destination_row, destination_col,
+                    destination_cell_data, db, DB_PMK_NAME, CLN_GRID, session, True
+                )
             )
             destination_wheelstack_data['blocked'] = True
             destination_wheelstack_data['lastOrder'] = created_order_id
-            await db_update_wheelstack(
-                destination_wheelstack_data, destination_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    destination_wheelstack_data, destination_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                )
             )
             # Destination change ---
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
             return created_order_id
 
 
@@ -510,6 +569,7 @@ async def orders_create_move_to_laboratory(db: AsyncIOMotorClient, order_data: d
             created_order = await db_create_order(cor_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session)
             created_order_id = created_order.inserted_id
             # Order Creation ---
+            transaction_tasks = []
             # SOURCE change:
             #  1. Block SOURCE cell and `wheelStack` on it.
             new_source_cell_data = {
@@ -517,21 +577,20 @@ async def orders_create_move_to_laboratory(db: AsyncIOMotorClient, order_data: d
                 'blocked': True,
                 'blockedBy': created_order_id,
             }
-            await db_update_grid_cell_data(
-                source_id, source_row, source_col, new_source_cell_data,
-                db, DB_PMK_NAME, CLN_GRID, session, False
+            transaction_tasks.append(
+                db_update_grid_cell_data(
+                    source_id, source_row, source_col, new_source_cell_data,
+                    db, DB_PMK_NAME, CLN_GRID, session, True
+                )
             )
             source_wheelstack_data['blocked'] = True
             source_wheelstack_data['lastOrder'] = created_order_id
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                )
             )
-            # DESTINATION change:
-            #  1. ADD created order into `extra` element `orders`.
-            await db_append_extra_cell_order(
-                destination_id, extra_name, created_order_id,
-                db, DB_PMK_NAME, CLN_GRID, session, True
-            )
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
             return created_order_id
 
 
@@ -668,6 +727,7 @@ async def orders_create_move_to_processing(db: AsyncIOMotorClient, order_data: d
             created_order = await db_create_order(cor_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session)
             created_order_id = created_order.inserted_id
             # Order creation ---
+            transaction_tasks = []
             # SOURCE change:
             #  1. Block SOURCE cell and `wheelStack` on it.
             new_source_cell_data = {
@@ -675,21 +735,20 @@ async def orders_create_move_to_processing(db: AsyncIOMotorClient, order_data: d
                 'blocked': True,
                 'blockedBy': created_order_id,
             }
-            await db_update_grid_cell_data(
-                source_id, source_row, source_col, new_source_cell_data,
-                db, DB_PMK_NAME, CLN_GRID, session, False
+            transaction_tasks.append(
+                db_update_grid_cell_data(
+                    source_id, source_row, source_col, new_source_cell_data,
+                    db, DB_PMK_NAME, CLN_GRID, session, True
+                )
             )
             source_wheelstack_data['blocked'] = True
             source_wheelstack_data['lastOrder'] = created_order_id
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                )
             )
-            # DESTINATION change:
-            #  1. ADD created order into `extra` element `orders`.
-            await db_append_extra_cell_order(
-                destination_id, extra_name, created_order_id,
-                db, DB_PMK_NAME, CLN_GRID, session, True
-            )
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
             return created_order_id
 
 
@@ -820,10 +879,6 @@ async def orders_create_bulk_move_to_pro_rej_orders(
                 async_tasks.append(task)
             results = await asyncio.gather(*async_tasks)
             orders = [result['orderId'] for result in results]
-            await db_append_extra_cell_orders(
-                destination_id, destination_element_name, orders,
-                db, DB_PMK_NAME, CLN_GRID, session, True
-            )
             update_tasks = []
             grid_cells_to_update = {}
             for result in results:
@@ -977,6 +1032,7 @@ async def orders_create_move_to_rejected(db: AsyncIOMotorClient, order_data: dic
             created_order = await db_create_order(cor_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session)
             created_order_id = created_order.inserted_id
             # Order creation ---
+            transaction_tasks = []
             # SOURCE change:
             #  1. Block SOURCE cell and `wheelStack` on it.
             new_source_cell_data = {
@@ -984,21 +1040,20 @@ async def orders_create_move_to_rejected(db: AsyncIOMotorClient, order_data: dic
                 'blocked': True,
                 'blockedBy': created_order_id,
             }
-            await db_update_grid_cell_data(
-                source_id, source_row, source_col, new_source_cell_data,
-                db, DB_PMK_NAME, CLN_GRID, session, False
+            transaction_tasks.append(
+                db_update_grid_cell_data(
+                    source_id, source_row, source_col, new_source_cell_data,
+                    db, DB_PMK_NAME, CLN_GRID, session, True
+                )
             )
             source_wheelstack_data['blocked'] = True
             source_wheelstack_data['lastOrder'] = created_order_id
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                )
             )
-            # DESTINATION change:
-            #  1. ADD created order into `extra` element `orders`.
-            await db_append_extra_cell_order(
-                destination_id, extra_name, created_order_id,
-                db, DB_PMK_NAME, CLN_GRID, session, True
-            )
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
             return created_order_id
 
 
@@ -1070,18 +1125,6 @@ async def orders_create_move_to_storage(db: AsyncIOMotorClient, order_data: dict
             detail=f'Source cell `wheelstack` is blocked by other order = {source_wheelstack_data['lastOrder']}',
             status_code=status.HTTP_403_FORBIDDEN,
         )
-    # batch_number_data = await db_find_batch_number(
-    #     source_wheelstack_data['batchNumber'], db, DB_PMK_NAME, CLN_BATCH_NUMBERS,
-    # )
-    # if batch_number_data is None:
-    #     logger.warning(
-    #         f'{attempt_string}'
-    #         f'With non existing `batchNumber` = {source_wheelstack_data['batchNumber']}'
-    #     )
-    #     raise HTTPException(
-    #         detail=f'Provided `batchNumber`. Not Found.',
-    #         status_code=status.HTTP_404_NOT_FOUND,
-    #     )
     storage_data = None
     if order_data.get('storageName'):
         storage_name = order_data['storageName']
@@ -1139,26 +1182,36 @@ async def orders_create_move_to_storage(db: AsyncIOMotorClient, order_data: dict
                 'blocked': True,
                 'blockedBy': created_order_id,
             }
+            transaction_tasks = []
             if PS_GRID == chosen_placement:
-                await db_update_grid_cell_data(
-                    source_id, source_row, source_col, new_source_cell_data,
-                    db, DB_PMK_NAME, CLN_GRID, session, True,
+                transaction_tasks.append(
+                    db_update_grid_cell_data(
+                        source_id, source_row, source_col, new_source_cell_data,
+                        db, DB_PMK_NAME, CLN_GRID, session, True,
+                    )
                 )
             elif PS_BASE_PLATFORM == chosen_placement:
-                await db_update_platform_cell_data(
-                    source_id, source_row, source_col, new_source_cell_data,
-                    db, DB_PMK_NAME, CLN_BASE_PLATFORM, session, True,
+                transaction_tasks.append(
+                    db_update_platform_cell_data(
+                        source_id, source_row, source_col, new_source_cell_data,
+                        db, DB_PMK_NAME, CLN_BASE_PLATFORM, session, True,
+                    )
                 )
             source_wheelstack_data['blocked'] = True
             source_wheelstack_data['lastOrder'] = created_order_id
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'],
-                db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'],
+                    db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                )
             )
             storage_identifiers = [{'_id': storage_id}]
-            await db_update_storage_last_change(
-                storage_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
+            transaction_tasks.append(
+                db_update_storage_last_change(
+                    storage_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
+                )
             )
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
             return created_order_id
 
 
@@ -1245,25 +1298,33 @@ async def orders_create_move_from_storage_whole_stack(
                 new_order_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
             )
             created_order_id = created_order.inserted_id
+            transaction_tasks = []
             # Block wheelstack in STORAGE
             wheelstack_data['blocked'] = True
             wheelstack_data['lastOrder'] = created_order_id
-            await db_update_wheelstack(
-                wheelstack_data, wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    wheelstack_data, wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                )
             )
             # Block target cell in GRID
             destination_cell_data['wheelStack'] = None
             destination_cell_data['blocked'] = True
             destination_cell_data['blockedBy'] = created_order_id
-            await db_update_grid_cell_data(
-                destination_id, destination_row, destination_col,
-                destination_cell_data, db, DB_PMK_NAME, CLN_GRID, session, True
+            transaction_tasks.append(
+                db_update_grid_cell_data(
+                    destination_id, destination_row, destination_col,
+                    destination_cell_data, db, DB_PMK_NAME, CLN_GRID, session, True
+                )
             )
             # Update source storage
             source_identifiers: list[dict] = [{'_id': storage_id}]
-            await db_update_storage_last_change(
-                source_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
+            transaction_tasks.append(
+                db_update_storage_last_change(
+                    source_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
+                )
             )
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
             return created_order_id
 
 
@@ -1368,22 +1429,28 @@ async def orders_create_move_to_pro_rej_from_storage(
                 new_order_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session,
             )
             created_order_id = created_order_id.inserted_id
+            transaction_tasks = []
             # Block source wheelstack
             source_wheelstack_data['blocked'] = True
             source_wheelstack_data['lastOrder'] = created_order_id
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'],
-                db, DB_PMK_NAME, CLN_WHEELSTACKS, session, True
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'],
+                    db, DB_PMK_NAME, CLN_WHEELSTACKS, session, True
+                )
             )
-            # Place order in extraElement.orders update lastChange
-            await db_append_extra_cell_order(
-                destination_id, destination_col, created_order_id,
-                db, DB_PMK_NAME, CLN_GRID, session, True
+            transaction_tasks.append(
+                db_grid_update_last_change_time(
+                    destination_id, db, DB_PMK_NAME, CLN_GRID, 
+                )
             )
             source_identifiers = [{'_id': storage_id}]
-            await db_update_storage_last_change(
-                source_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
+            transaction_tasks.append(
+                db_update_storage_last_change(
+                    source_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
+                )
             )
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
             return created_order_id
 
 
@@ -1464,16 +1531,22 @@ async def orders_create_move_from_storage_to_storage_whole_stack(
                 new_order_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session,
             )
             created_order_id = created_order_id.inserted_id
+            transaction_tasks = []
             source_wheelstack_data['blocked'] = True
             source_wheelstack_data['lastOrder'] = created_order_id
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'],
-                db, DB_PMK_NAME, CLN_WHEELSTACKS, session, True
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'],
+                    db, DB_PMK_NAME, CLN_WHEELSTACKS, session, True
+                )
             )
             storage_identifiers = [{'_id': source_storage_id}, {'_id': destination_storage_id}]
-            await db_update_storage_last_change(
-                storage_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
+            transaction_tasks.append(
+                db_update_storage_last_change(
+                    storage_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
+                )
             )
+            transaction_tasks_results = await asyncio.gather(transaction_tasks)
             return created_order_id
 
 
@@ -1552,17 +1625,24 @@ async def orders_create_move_from_storage_to_lab(
             created_order_id = created_order.inserted_id
             source_wheelstack_data['blocked'] = True
             source_wheelstack_data['lastOrder'] = created_order_id
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            transaction_tasks = []
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                )
             )
-            await db_append_extra_cell_order(
-                destination_id, destination_extra_element, created_order_id,
-                db, DB_PMK_NAME, CLN_GRID, session, True
+            transaction_tasks.append(
+                db_grid_update_last_change_time(
+                    destination_id, db, DB_PMK_NAME, CLN_GRID
+                )
             )
             storage_identifiers = [{'_id': source_storage_id}]
-            await db_update_storage_last_change(
-                storage_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
+            transaction_tasks.append(
+                db_update_storage_last_change(
+                    storage_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
+                )
             )
+            transaction_tasks_resulsts = await asyncio.gather(*transaction_tasks)
             return created_order_id
         
 

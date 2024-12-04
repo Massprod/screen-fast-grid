@@ -4,16 +4,19 @@ from loguru import logger
 from fastapi import HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorClient
 from routers.base_platform.crud import db_get_platform_cell_data, db_update_platform_cell_data
-from routers.grid.crud import (db_get_grid_cell_data,
-                               db_get_grid_extra_cell_data,
-                               db_update_grid_cell_data,
-                               db_delete_extra_cell_order)
+from routers.grid.crud import (
+    db_get_grid_cell_data,
+    db_get_grid_extra_cell_data,
+    db_update_grid_cell_data
+)
 from routers.storages.crud import db_update_storage_last_change
 from routers.wheelstacks.crud import db_find_wheelstack_by_object_id, db_update_wheelstack
 from routers.orders.crud import db_delete_order, db_create_order
-from constants import (CLN_STORAGES, DB_PMK_NAME, CLN_ACTIVE_ORDERS, CLN_GRID, CLN_WHEELSTACKS,
-                       ORDER_STATUS_CANCELED, CLN_CANCELED_ORDERS, PRES_TYPE_GRID,
-                       PRES_TYPE_PLATFORM, CLN_BASE_PLATFORM, PS_BASE_PLATFORM, PS_GRID, PS_STORAGE)
+from constants import (
+    CLN_STORAGES, DB_PMK_NAME, CLN_ACTIVE_ORDERS, CLN_GRID, CLN_WHEELSTACKS,
+    ORDER_STATUS_CANCELED, CLN_CANCELED_ORDERS, PRES_TYPE_GRID,
+    PRES_TYPE_PLATFORM, CLN_BASE_PLATFORM, PS_BASE_PLATFORM, PS_GRID, PS_STORAGE
+)
 from utility.utilities import time_w_timezone
 from routers.orders.orders_completion import update_placement_cell
 
@@ -89,33 +92,40 @@ async def orders_cancel_basic_extra_element_moves(
     source_cell_data['blockedBy'] = None
     async with (await db.start_session()) as session:
         async with session.start_transaction():
-            await db_update_grid_cell_data(
-                source_id, source_row, source_col, source_cell_data,
-                db, DB_PMK_NAME, CLN_GRID, session, True
+            transaction_tasks = []
+            transaction_tasks.append(
+                db_update_grid_cell_data(
+                    source_id, source_row, source_col, source_cell_data,
+                    db, DB_PMK_NAME, CLN_GRID, session, True
+                )
             )
-            # -5- <- Delete order from destination extra element
-            await db_delete_extra_cell_order(
-                dest_id, dest_element_name, order_data['_id'], db, DB_PMK_NAME, CLN_GRID, session
-            )
-            # -6- <- Unblock `wheelStack` and update `lastOrder`.
+            # -5- <- Unblock `wheelStack` and update `lastOrder`.
             source_wheelstack_data['blocked'] = False
             source_wheelstack_data['lastOrder'] = order_data['_id']
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                )
             )
-            # -7- Delete order from `activeOrders`
-            await db_delete_order(
-                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            # -6- Delete order from `activeOrders`
+            transaction_tasks.append(
+                db_delete_order(
+                    order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+                )
             )
-            # -8- Add order into `canceledOrders`
+            # -7- Add order into `canceledOrders`
             cancellation_time = await time_w_timezone()
             order_data['status'] = ORDER_STATUS_CANCELED
             order_data['cancellationReason'] = cancellation_reason if cancellation_reason else 'Not specified'
             order_data['canceledAt'] = cancellation_time
             order_data['lastUpdated'] = cancellation_time
-            canceled_order = await db_create_order(
-                order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS, session
+            transaction_tasks.append(
+                db_create_order(
+                    order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS, session
+                )
             )
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
+            canceled_order = transaction_tasks_results[-1]
             return canceled_order.inserted_id
 
 
@@ -206,33 +216,44 @@ async def orders_cancel_move_wholestack(
     source_cell_data['blockedBy'] = None
     async with (await db.start_session()) as session:
         async with session.start_transaction():
+            transaction_tasks = []
             if PRES_TYPE_GRID == source_type:
                 record_change = False if source_id == dest_id else True
-                await db_update_grid_cell_data(
-                    source_id, source_row, source_col, source_cell_data,
-                    db, DB_PMK_NAME, CLN_GRID, session, record_change
+                transaction_tasks.append(
+                    db_update_grid_cell_data(
+                        source_id, source_row, source_col, source_cell_data,
+                        db, DB_PMK_NAME, CLN_GRID, session, record_change
+                    )
                 )
             elif PRES_TYPE_PLATFORM == source_type:
-                await db_update_platform_cell_data(
-                    source_id, source_row, source_col, source_cell_data,
-                    db, DB_PMK_NAME, CLN_BASE_PLATFORM, session
+                transaction_tasks.append(
+                    db_update_platform_cell_data(
+                        source_id, source_row, source_col, source_cell_data,
+                        db, DB_PMK_NAME, CLN_BASE_PLATFORM, session
+                    )
                 )
             # -5- Unblock destination
             destination_cell_data['blocked'] = False
             destination_cell_data['blockedBy'] = None
-            await db_update_grid_cell_data(
-                dest_id, dest_row, dest_col, destination_cell_data,
-                db, DB_PMK_NAME, CLN_GRID, session, True
+            transaction_tasks.append(
+                db_update_grid_cell_data(
+                    dest_id, dest_row, dest_col, destination_cell_data,
+                    db, DB_PMK_NAME, CLN_GRID, session, True
+                )
             )
             # -6- Unblock Source `wheelStack`
             source_wheelstack_data['blocked'] = False
             source_wheelstack_data['lastOrder'] = order_data['_id']
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                )
             )
             # -7- Delete order from `activeOrders`
-            await db_delete_order(
-                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            transaction_tasks.append(
+                db_delete_order(
+                    order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+                )
             )
             # -7- Add order into `canceledOrders`
             cancellation_time = await time_w_timezone()
@@ -240,9 +261,13 @@ async def orders_cancel_move_wholestack(
             order_data['cancellationReason'] = cancellation_reason if cancellation_reason else 'Not specified'
             order_data['canceledAt'] = cancellation_time
             order_data['lastUpdated'] = cancellation_time
-            canceled_order = await db_create_order(
-                order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS, session
+            transaction_tasks.append(
+                db_create_order(
+                    order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS, session
+                )
             )
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
+            canceled_order = transaction_tasks_results[-1]
             return canceled_order.inserted_id
 
 
@@ -304,33 +329,46 @@ async def orders_cancel_move_to_storage(
     source_cell_data['blockedBy'] = None
     async with (await db.start_session()) as session:
         async with session.start_transaction():
+            transaction_tasks = []
             if PS_GRID == source_type:
-                await db_update_grid_cell_data(
-                    source_id, source_row, source_col, source_cell_data,
-                    db, DB_PMK_NAME, CLN_GRID, session, True
+                transaction_tasks.append(
+                    db_update_grid_cell_data(
+                        source_id, source_row, source_col, source_cell_data,
+                        db, DB_PMK_NAME, CLN_GRID, session, True
+                    )
                 )
             elif PS_BASE_PLATFORM == source_type:
-                await db_update_platform_cell_data(
-                    source_id, source_row, source_col, source_cell_data,
-                    db, DB_PMK_NAME, CLN_BASE_PLATFORM, session, True
+                transaction_tasks.append(
+                    db_update_platform_cell_data(
+                        source_id, source_row, source_col, source_cell_data,
+                        db, DB_PMK_NAME, CLN_BASE_PLATFORM, session, True
+                    )
                 )
             source_wheelstack_data['blocked'] = False
             source_wheelstack_data['lastOrder'] = order_data['_id']
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'],
-                db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'],
+                    db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                )
             )
-            await db_delete_order(
-                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session,
+            transaction_tasks.append(
+                db_delete_order(
+                    order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session,
+                )
             )
             cancellation_time = await time_w_timezone()
             order_data['status'] = ORDER_STATUS_CANCELED
             order_data['cancellationReason'] = cancellation_reason if cancellation_reason else "Not specified"
             order_data['canceledAt'] = cancellation_time
             order_data['lastUpdated'] = cancellation_time
-            canceled_order = await db_create_order(
-                order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS, session
+            transaction_tasks.append(
+                db_create_order(
+                    order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS, session
+                )
             )
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
+            canceled_order = transaction_tasks_results[-1]
             return canceled_order.inserted_id
 
 
@@ -371,25 +409,38 @@ async def orders_cancel_move_from_storage_to_grid(
     source_id: ObjectId = order_data['source']['placementId']
     async with (await db.start_session()) as session:
         async with session.start_transaction():
-            await db_update_grid_cell_data(
-                dest_id, dest_row, dest_col, destination_cell_data,
-                db, DB_PMK_NAME, CLN_GRID, session, True
+            transaction_tasks = []
+            transaction_tasks.append(
+                db_update_grid_cell_data(
+                    dest_id, dest_row, dest_col, destination_cell_data,
+                    db, DB_PMK_NAME, CLN_GRID, session, True
+                )
             )
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'],
-                db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'],
+                    db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                )
             )
-            await db_delete_order(
-                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session,
-            )
-            canceled_order = await db_create_order(
-                order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS, session
+            transaction_tasks.append(
+                db_delete_order(
+                    order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session,
+                )
             )
             # Update source storage
             source_identifiers: list[dict] = [{'_id': source_id}]
-            await db_update_storage_last_change(
-                source_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
+            transaction_tasks.append(
+                db_update_storage_last_change(
+                    source_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
+                )
             )
+            transaction_tasks.append(
+                db_create_order(
+                    order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS, session
+                )
+            )
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
+            canceled_order = transaction_tasks_results[-1]
             return canceled_order.inserted_id
 
 
@@ -418,19 +469,25 @@ async def orders_cancel_move_from_storage_to_extras(
     source_wheelstack_data['lastOrder'] = order_data['_id']
     async with (await db.start_session()) as session:
         async with session.start_transaction():
-            await db_delete_order(
-                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session,
+            transaction_tasks = []
+            transaction_tasks.append(
+                db_delete_order(
+                    order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session,
+                )
             )
-            await db_delete_extra_cell_order(
-                dest_id, extra_element_name, order_data['_id'], db, DB_PMK_NAME, CLN_GRID, session, True
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session, True
+                )
             )
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session, True
+            transaction_tasks.append(
+                db_create_order(
+                    order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS, session,
+                )
             )
-            canceled_order_id = await db_create_order(
-                order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS, session,
-            )
-            return canceled_order_id.inserted_id
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
+            canceled_order = transaction_tasks_results[-1]
+            return canceled_order.inserted_id
 
 
 async def orders_cancel_move_from_storage_to_storage(
@@ -455,17 +512,26 @@ async def orders_cancel_move_from_storage_to_storage(
     source_wheelstack_data['lastOrder'] = order_data['_id']
     async with (await db.start_session()) as session:
         async with session.start_transaction():
-            await db_delete_order(
-                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            transaction_tasks = []
+            transaction_tasks.append(
+                db_delete_order(
+                    order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+                )
             )
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'],
-                db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'],
+                    db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                )
             )
-            canceled_order_id = await db_create_order(
-                order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS, session,
+            transaction_tasks.append(
+                db_create_order(
+                    order_data, db, DB_PMK_NAME, CLN_CANCELED_ORDERS, session,
+                )
             )
-            return canceled_order_id.inserted_id
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
+            canceled_order = transaction_tasks_results[-1]
+            return canceled_order.inserted_id
 
 
 async def orders_cancel_merge_wheelstacks(

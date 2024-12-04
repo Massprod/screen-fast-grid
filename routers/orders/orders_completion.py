@@ -2,22 +2,28 @@ import asyncio
 from loguru import logger
 from bson import ObjectId
 from fastapi import HTTPException, status
-from routers.storages.crud import db_get_storage_by_object_id, db_storage_get_placed_wheelstack, db_storage_place_wheelstack, \
-    db_storage_delete_placed_wheelstack
 from utility.utilities import time_w_timezone, get_object_id
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
-from routers.wheels.crud import (db_update_wheel_status,
-                                 db_update_wheel_position,
-                                 db_find_wheel_by_object_id,
-                                 db_update_wheel)
 from routers.orders.crud import db_delete_order, db_create_order
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
+from routers.base_platform.crud import db_get_platform_cell_data, db_update_platform_cell_data
+from routers.storages.crud import (
+    db_get_storage_by_object_id,
+    db_storage_get_placed_wheelstack,
+    db_storage_place_wheelstack,
+    db_storage_delete_placed_wheelstack
+)
+from routers.wheels.crud import (
+    db_update_wheel_status,
+    db_update_wheel_position,
+    db_find_wheel_by_object_id,
+    db_update_wheel
+)
 from routers.grid.crud import (
     db_get_grid_cell_data,
+    db_grid_update_last_change_time,
     db_update_grid_cell_data,
     db_get_grid_extra_cell_data,
-    db_delete_extra_cell_order
 )
-from routers.base_platform.crud import db_get_platform_cell_data, db_update_platform_cell_data
 from routers.wheelstacks.crud import (
     db_find_wheelstack_by_object_id,
     db_update_wheelstack
@@ -241,36 +247,27 @@ async def orders_complete_move_to_processing(order_data: dict, db: AsyncIOMotorC
                    f'Used in order = {order_data['_id']}, but it doesnt exist.',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
-    destination_cell_data = destination_cell_data['extra'][dest_element_name]
-    if str(order_data['_id']) not in destination_cell_data['orders']:
-        logger.error(
-            f'Corrupted order = {order_data['_id']} marked as placed in'
-            f'grid = {dest_id} cell {dest_element_row}|{dest_element_name}.'
-            f'But it doesnt exist in this cell orders.'
-        )
-        raise HTTPException(
-            detail=f'Corrupted order = {order_data['_id']} marked as placed in'
-                   f'grid = {dest_id} cell {dest_element_row}|{dest_element_name}.'
-                   f'But it doesnt exist in this cell orders.',
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
     # -4- <- Clear source cell
     source_cell_data['wheelStack'] = None
     source_cell_data['blockedBy'] = None
     source_cell_data['blocked'] = False
     async with (await db.start_session()) as session:
         async with session.start_transaction():
+            transaction_tasks = []
             update_both: bool = False if source_id == dest_id else True
-            await db_update_grid_cell_data(
-                source_id, source_row, source_col, source_cell_data,
-                db, DB_PMK_NAME, CLN_GRID, session, update_both
+            transaction_tasks.append(
+                db_update_grid_cell_data(
+                    source_id, source_row, source_col, source_cell_data,
+                    db, DB_PMK_NAME, CLN_GRID, session, True
+                )
             )
-            # -5- <- Delete order from destination element
-            await db_delete_extra_cell_order(
-                dest_id, dest_element_name, order_data['_id'],
-                db, DB_PMK_NAME, CLN_GRID, session, True
-            )
-            # -6- <- Update `wheelStack` record
+            if update_both:
+                transaction_tasks.append(
+                    db_grid_update_last_change_time(
+                        dest_id, db, DB_PMK_NAME, CLN_GRID
+                    )
+                )
+            # -5- <- Update `wheelStack` record
             source_wheelstack_data['placement']['type'] = dest_type
             source_wheelstack_data['placement']['placementId'] = dest_id
             source_wheelstack_data['rowPlacement'] = dest_element_row
@@ -278,27 +275,37 @@ async def orders_complete_move_to_processing(order_data: dict, db: AsyncIOMotorC
             source_wheelstack_data['lastOrder'] = order_data['_id']
             source_wheelstack_data['status'] = PS_SHIPPED
             source_wheelstack_data['blocked'] = True
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
-            )
-            # -7- <- Update status for each wheel
-            for wheel in order_data['affectedWheels']['source']:
-                await db_update_wheel_status(
-                    wheel, PS_SHIPPED, db, DB_PMK_NAME, CLN_WHEELS, session
+            transaction_tasks.append(
+                 db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
                 )
-            # -8- Delete order from `activeOrders`
-            await db_delete_order(
-                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
             )
-            # -9- Add order into `completedOrders`
+            # -6- <- Update status for each wheel
+            for wheel in order_data['affectedWheels']['source']:
+                transaction_tasks.append(
+                    db_update_wheel_status(
+                        wheel, PS_SHIPPED, db, DB_PMK_NAME, CLN_WHEELS, session
+                    )
+                )
+            # -7- Delete order from `activeOrders`
+            transaction_tasks.append(
+                db_delete_order(
+                    order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+                )
+            )
+            # -8- Add order into `completedOrders`
             completion_time = await time_w_timezone()
             order_data['status'] = ORDER_STATUS_COMPLETED
             order_data['lastUpdated'] = completion_time
             order_data['completedAt'] = completion_time
-            completed_order = await db_create_order(
-                order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+            transaction_tasks.append(
+                db_create_order(
+                    order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+                )
             )
-            return completed_order.inserted_id
+            transaction_results = await asyncio.gather(*transaction_tasks)
+            completed_order_result = transaction_results[-1]
+            return completed_order_result.inserted_id
 
 
 async def orders_complete_move_to_rejected(order_data: dict, db: AsyncIOMotorClient) -> ObjectId:
@@ -362,36 +369,25 @@ async def orders_complete_move_to_rejected(order_data: dict, db: AsyncIOMotorCli
                    f'Used in order = {order_data['_id']}, but it doesnt exist.',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
-    destination_cell_data = destination_cell_data['extra'][dest_element_name]
-    if str(order_data['_id']) not in destination_cell_data['orders']:
-        logger.error(
-            f'Corrupted order = {order_data['_id']} marked as placed in'
-            f'grid = {dest_id} cell {dest_element_row}|{dest_element_name}.'
-            f'But it doesnt exist in this cell orders.'
-        )
-        raise HTTPException(
-            detail=f'Corrupted order = {order_data['_id']} marked as placed in'
-                   f'grid = {dest_id} cell {dest_element_row}|{dest_element_name}.'
-                   f'But it doesnt exist in this cell orders.',
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
     # -4- <- Clear source cell
     source_cell_data['wheelStack'] = None
     source_cell_data['blockedBy'] = None
     source_cell_data['blocked'] = False
     async with (await db.start_session()) as session:
         async with session.start_transaction():
+            transaction_tasks = []
             update_both: bool = False if source_id == dest_id else True
-            await db_update_grid_cell_data(
-                source_id, source_row, source_col, source_cell_data,
-                db, DB_PMK_NAME, CLN_GRID, session, update_both
+            transaction_tasks.append(
+                db_update_grid_cell_data(
+                    source_id, source_row, source_col, source_cell_data,
+                    db, DB_PMK_NAME, CLN_GRID, session, True
+                )
             )
-            # -5- <- Delete order from destination element
-            await db_delete_extra_cell_order(
-                dest_id, dest_element_name, order_data['_id'],
-                db, DB_PMK_NAME, CLN_GRID, session, True
-            )
-            # -6- <- Update `wheelStack` record
+            if update_both:
+                db_grid_update_last_change_time(
+                    dest_id, db, DB_PMK_NAME, CLN_GRID
+                )
+            # -5- <- Update `wheelStack` record
             source_wheelstack_data['placement']['type'] = dest_type
             source_wheelstack_data['placement']['placementId'] = dest_id
             source_wheelstack_data['rowPlacement'] = dest_element_row
@@ -399,26 +395,36 @@ async def orders_complete_move_to_rejected(order_data: dict, db: AsyncIOMotorCli
             source_wheelstack_data['lastOrder'] = order_data['_id']
             source_wheelstack_data['status'] = PS_REJECTED
             source_wheelstack_data['blocked'] = True
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
-            )
-            # -7- <- Update status for each wheel
-            for wheel in order_data['affectedWheels']['source']:
-                await db_update_wheel_status(
-                    wheel, PS_REJECTED, db, DB_PMK_NAME, CLN_WHEELS, session
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
                 )
-            # -8- Delete order from `activeOrders`
-            await db_delete_order(
-                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
             )
-            # -9- Add order into `completedOrders`
+            # -6- <- Update status for each wheel
+            for wheel in order_data['affectedWheels']['source']:
+                transaction_tasks.append(
+                    db_update_wheel_status(
+                        wheel, PS_REJECTED, db, DB_PMK_NAME, CLN_WHEELS, session
+                    )
+                )
+            # -7- Delete order from `activeOrders`
+            transaction_tasks.append(
+                db_delete_order(
+                    order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+                )
+            )
+            # -8- Add order into `completedOrders`
             completion_time = await time_w_timezone()
             order_data['status'] = ORDER_STATUS_COMPLETED
             order_data['lastUpdated'] = completion_time
             order_data['completedAt'] = completion_time
-            completed_order = await db_create_order(
-                order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+            transaction_tasks.append(
+                db_create_order(
+                    order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+                )
             )
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
+            completed_order = transaction_tasks_results[-1]
             return completed_order.inserted_id
 
 
@@ -482,19 +488,6 @@ async def orders_complete_move_to_laboratory(order_data: dict, db: AsyncIOMotorC
                    f'Used in order = {order_data['_id']}, but it doesnt exist.',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
-    destination_cell_data = destination_cell_data['extra'][dest_element_name]
-    if str(order_data['_id']) not in destination_cell_data['orders']:
-        logger.error(
-            f'Corrupted order = {order_data['_id']} marked as placed in'
-            f'grid = {dest_id} cell {dest_element_row}|{dest_element_name}.'
-            f'But it doesnt exist in this cell orders.'
-        )
-        raise HTTPException(
-            detail=f'Corrupted order = {order_data['_id']} marked as placed in'
-                   f'grid = {dest_id} cell {dest_element_row}|{dest_element_name}.'
-                   f'But it doesnt exist in this cell orders.',
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
     lab_wheel = order_data['affectedWheels']['source'][0]
     try:
         source_wheelstack_data['wheels'].remove(lab_wheel)
@@ -521,48 +514,61 @@ async def orders_complete_move_to_laboratory(order_data: dict, db: AsyncIOMotorC
         source_wheelstack_data['status'] = PS_SHIPPED
     async with (await db.start_session()) as session:
         async with session.start_transaction():
+            transaction_tasks = []
             update_both: bool = False if source_id == dest_id else True
-            await db_update_grid_cell_data(
-                source_id, source_row, source_col, source_cell_data, db,
-                DB_PMK_NAME, CLN_GRID, session, update_both
+            transaction_tasks.append(
+                db_update_grid_cell_data(
+                    source_id, source_row, source_col, source_cell_data, db,
+                    DB_PMK_NAME, CLN_GRID, session, True
+                )
             )
-            # -5- <- Delete order from destination element
-            await db_delete_extra_cell_order(
-                dest_id, dest_element_name, order_data['_id'],
-                db, DB_PMK_NAME, CLN_GRID, session, True,
-            )
-            # -6- <- Unblock source `wheelStack` + reshuffle wheels.
-
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            if update_both:
+                db_grid_update_last_change_time(
+                    dest_id, db, DB_PMK_NAME, CLN_GRID
+                )
+            # -5- <- Unblock source `wheelStack` + reshuffle wheels.
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                )
             )
             # We store `objectId` in `affectedWheels` and `wheels`.
             # So it's guaranteed to be unique, we don't need to check a position, we can just remove it.
             for new_pos, wheel in enumerate(source_wheelstack_data['wheels']):
-                await db_update_wheel_position(
-                    wheel, new_pos, db, DB_PMK_NAME, CLN_WHEELS, session
+                transaction_tasks.append(
+                    db_update_wheel_position(
+                        wheel, new_pos, db, DB_PMK_NAME, CLN_WHEELS, session
+                    )
                 )
-            # -7- <- Update `chosenWheel`
+            # -6- <- Update `chosenWheel`
             lab_wheel_data = await db_find_wheel_by_object_id(
                 lab_wheel, db, DB_PMK_NAME, CLN_WHEELS, session
             )
             lab_wheel_data['wheelStack'] = None
             lab_wheel_data['status'] = PS_LABORATORY
-            await db_update_wheel(
-                lab_wheel, lab_wheel_data, db, DB_PMK_NAME, CLN_WHEELS, session
+            transaction_tasks.append(
+                db_update_wheel(
+                    lab_wheel, lab_wheel_data, db, DB_PMK_NAME, CLN_WHEELS, session
+                )
             )
-            # -8- <- Delete order from `activeOrders`
-            await db_delete_order(
-                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            # -7- <- Delete order from `activeOrders`
+            transaction_tasks.append(
+                db_delete_order(
+                    order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+                )
             )
-            # -9- <- Add order into `completedOrders`
+            # -8- <- Add order into `completedOrders`
             completion_time = await time_w_timezone()
             order_data['status'] = ORDER_STATUS_COMPLETED
             order_data['lastUpdated'] = completion_time
             order_data['completedAt'] = completion_time
-            completed_order = await db_create_order(
-                order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+            transaction_tasks.append(
+                db_create_order(
+                    order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+                )
             )
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
+            completed_order = transaction_tasks_results[-1]
             return completed_order.inserted_id
 
 
@@ -634,15 +640,20 @@ async def orders_complete_move_to_storage(
     completion_time = await time_w_timezone()
     async with (await db.start_session()) as session:
         async with session.start_transaction():
+            transaction_tasks = []
             if PS_GRID == source_type:
-                await db_update_grid_cell_data(
-                    source_id, source_row, source_col, source_cell_data,
-                    db, DB_PMK_NAME, CLN_GRID, session, True
+                transaction_tasks.append(
+                    db_update_grid_cell_data(
+                        source_id, source_row, source_col, source_cell_data,
+                        db, DB_PMK_NAME, CLN_GRID, session, True
+                    )
                 )
             elif PS_BASE_PLATFORM == source_type:
-                await db_update_platform_cell_data(
-                    source_id, source_row, source_col, source_cell_data,
-                    db, DB_PMK_NAME, CLN_BASE_PLATFORM, session, True
+                transaction_tasks.append(
+                    db_update_platform_cell_data(
+                        source_id, source_row, source_col, source_cell_data,
+                        db, DB_PMK_NAME, CLN_BASE_PLATFORM, session, True
+                    )
                 )
             source_wheelstack_data['placement']['type'] = PS_STORAGE
             source_wheelstack_data['placement']['placementId'] = storage_id
@@ -651,26 +662,38 @@ async def orders_complete_move_to_storage(
             source_wheelstack_data['lastOrder'] = order_data['_id']
             source_wheelstack_data['status'] = PS_STORAGE
             source_wheelstack_data['blocked'] = False
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                )
             )
             for wheel in order_data['affectedWheels']['source']:
-                await db_update_wheel_status(
-                    wheel, PS_STORAGE, db, DB_PMK_NAME, CLN_WHEELS, session
+                transaction_tasks.append(
+                    db_update_wheel_status(
+                        wheel, PS_STORAGE, db, DB_PMK_NAME, CLN_WHEELS, session
+                    )
                 )
-            await db_delete_order(
-                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            transaction_tasks.append(
+                db_delete_order(
+                    order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+                )
             )
             order_data['status'] = ORDER_STATUS_COMPLETED
             order_data['lastUpdated'] = completion_time
             order_data['completedAt'] = completion_time
-            completed_order = await db_create_order(
-                order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+            transaction_tasks.append(
+                db_storage_place_wheelstack(
+                    storage_id, '', source_wheelstack_data['_id'],
+                    db, DB_PMK_NAME, CLN_STORAGES, session
+                )
             )
-            await db_storage_place_wheelstack(
-                storage_id, '', source_wheelstack_data['_id'],
-                db, DB_PMK_NAME, CLN_STORAGES, session
+            transaction_tasks.append(
+                db_create_order(
+                    order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+                )
             )
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
+            completed_order = transaction_tasks_results[-1]
             return completed_order.inserted_id
 
 
@@ -719,6 +742,7 @@ async def orders_complete_move_wholestack_from_storage(
                     detail=f'Corrupted Order. `wheelstack` not present in `storage` = {storage_id}',
                     status_code=status.HTTP_404_NOT_FOUND,
                 )
+            transaction_tasks = []
             # Update wheelstack
             source_wheelstack_data['status'] = PS_GRID
             source_wheelstack_data['placement'] = {
@@ -729,33 +753,45 @@ async def orders_complete_move_wholestack_from_storage(
             source_wheelstack_data['colPlacement'] = destination_col
             source_wheelstack_data['blocked'] = False
             source_wheelstack_data['status'] = PS_GRID
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'],
-                db, DB_PMK_NAME, CLN_WHEELSTACKS, session, True
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'],
+                    db, DB_PMK_NAME, CLN_WHEELSTACKS, session, True
+                )
             )
             # Update wheels
             for wheel in source_wheelstack_data['wheels']:
-                await db_update_wheel_status(
-                    wheel, PS_GRID, db, DB_PMK_NAME, CLN_WHEELS, session
+                transaction_tasks.append(
+                    db_update_wheel_status(
+                        wheel, PS_GRID, db, DB_PMK_NAME, CLN_WHEELS, session
+                    )
                 )
             # Update placement cell in grid
             destination_cell_data['blocked'] = False
             destination_cell_data['blockedBy'] = None
             destination_cell_data['wheelStack'] = source_wheelstack_data['_id']
-            await db_update_grid_cell_data(
-                destination_id, destination_row, destination_col, destination_cell_data,
-                db, DB_PMK_NAME, CLN_GRID, session, True
+            transaction_tasks.append(
+                db_update_grid_cell_data(
+                    destination_id, destination_row, destination_col, destination_cell_data,
+                    db, DB_PMK_NAME, CLN_GRID, session, True
+                )
             )
             completion_time = await time_w_timezone()
             order_data['status'] = ORDER_STATUS_COMPLETED
             order_data['lastUpdated'] = completion_time
             order_data['completedAt'] = completion_time
-            completed_order = await db_create_order(
-                order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+            transaction_tasks.append(
+                db_delete_order(
+                    order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+                )
             )
-            await db_delete_order(
-                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            transaction_tasks.append(
+                db_create_order(
+                    order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+                )
             )
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
+            completed_order = transaction_tasks_results[-1]
             return completed_order.inserted_id
 
 
@@ -788,12 +824,6 @@ async def orders_complete_move_to_pro_rej_from_storage(
                    f'= {destination_row}|{destination_col} in grid = {destination_id}',
             status_code=status.HTTP_404_NOT_FOUND,
         )
-    destination_extra_element_data = destination_extra_element_data['extra'][destination_col]
-    if str(order_data['_id']) not in destination_extra_element_data['orders']:
-        raise HTTPException(
-            detail=f'Corrupted order, points to existing extraElement, but not present in it',
-            status_code=status.HTTP_404_NOT_FOUND,
-        )
     elements_status = PS_SHIPPED if processing else PS_REJECTED
     async with (await db.start_session()) as session:
         async with session.start_transaction():
@@ -807,37 +837,43 @@ async def orders_complete_move_to_pro_rej_from_storage(
                     detail=f'Corrupted Order. `wheelstack` not present in `storage` = {storage_id}',
                     status_code=status.HTTP_404_NOT_FOUND
                 )
+            transaction_tasks = []
             # Update wheelstack status
             source_wheelstack_data['status'] = elements_status
             source_wheelstack_data['blocked'] = True
             source_wheelstack_data['rowPlacement'] = destination_row
             source_wheelstack_data['colPlacement'] = destination_col
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'],
-                db, DB_PMK_NAME, CLN_WHEELSTACKS, session, True
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'],
+                    db, DB_PMK_NAME, CLN_WHEELSTACKS, session, True
+                )
             )
             # Update wheels statuses
             for wheel in source_wheelstack_data['wheels']:
-                await db_update_wheel_status(
-                    wheel, elements_status, db, DB_PMK_NAME, CLN_WHEELS, session,
+                transaction_tasks.append(
+                    db_update_wheel_status(
+                        wheel, elements_status, db, DB_PMK_NAME, CLN_WHEELS, session,
+                    )
                 )
-            # Delete order from extraElement
-            await db_delete_extra_cell_order(
-                destination_id, destination_col, order_data['_id'],
-                db, DB_PMK_NAME, CLN_GRID, session, True
-            )
             # Delete active order
-            await db_delete_order(
-                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            transaction_tasks.append(
+                db_delete_order(
+                    order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+                )
             )
             # Create completed order
             completion_time = await time_w_timezone()
             order_data['status'] = ORDER_STATUS_COMPLETED
             order_data['lastUpdated'] = completion_time
             order_data['completedAt'] = completion_time
-            completed_order = await db_create_order(
-                order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+            transaction_tasks.append(
+                db_create_order(
+                    order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+                )
             )
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
+            completed_order = transaction_tasks_results[-1]
             return completed_order.inserted_id
 
 
@@ -868,23 +904,37 @@ async def orders_complete_move_from_storage_to_storage(
     source_storage_id = await get_object_id(order_data['source']['placementId'])
     async with (await db.start_session()) as session:
         async with session.start_transaction():
-            await db_delete_order(
-                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            transaction_tasks = []
+            transaction_tasks.append(
+                db_delete_order(
+                    order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+                )
             )
-            await db_storage_delete_placed_wheelstack(
-                source_storage_id, '', source_wheelstack_data['_id'],
-                db, DB_PMK_NAME, CLN_STORAGES, session, True
+            record_both: bool = False if source_storage_id == destination_storage_id else True
+            transaction_tasks.append(
+                db_storage_delete_placed_wheelstack(
+                    source_storage_id, '', source_wheelstack_data['_id'],
+                    db, DB_PMK_NAME, CLN_STORAGES, session, record_both
+                )
             )
-            await db_storage_place_wheelstack(
-                destination_storage_id, '', source_wheelstack_id,
-                db, DB_PMK_NAME, CLN_STORAGES, session, True
+            transaction_tasks.append(
+                db_storage_place_wheelstack(
+                    destination_storage_id, '', source_wheelstack_id,
+                    db, DB_PMK_NAME, CLN_STORAGES, session, True
+                )
             )
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session,
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session,
+                )
             )
-            created_order = await db_create_order(
-                order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+            transaction_tasks.append(
+                db_create_order(
+                    order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+                )
             )
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
+            created_order = transaction_tasks_results[-1]
             return created_order.inserted_id
 
 
@@ -920,39 +970,50 @@ async def orders_complete_move_from_storage_to_lab(
     dest_element_name = order_data['destination']['columnPlacement']
     async with (await db.start_session()) as session:
         async with session.start_transaction():
-            await db_delete_order(
-                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
-            )
-            await db_delete_extra_cell_order(
-                dest_id, dest_element_name, order_data['_id'],
-                db, DB_PMK_NAME, CLN_GRID, session, True,
+            transaction_tasks = []
+            transaction_tasks.append(
+                db_delete_order(
+                    order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+                )
             )
             if 0 == len(source_wheelstack_data['wheels']):
                 source_wheelstack_data['blocked'] = True
                 source_wheelstack_data['status'] = PS_SHIPPED
-                await db_storage_delete_placed_wheelstack(
-                    source_storage_id, '', source_wheelstack_data['_id'],
-                    db, DB_PMK_NAME, CLN_STORAGES, session, True
+                transaction_tasks.append(
+                    db_storage_delete_placed_wheelstack(
+                        source_storage_id, '', source_wheelstack_data['_id'],
+                        db, DB_PMK_NAME, CLN_STORAGES, session, True
+                    )
                 )
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'],
-                db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'],
+                    db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                )
             )
             for new_pos, wheel in enumerate(source_wheelstack_data['wheels']):
-                await db_update_wheel_position(
-                    wheel, new_pos, db, DB_PMK_NAME, CLN_WHEELS, session
+                transaction_tasks.append(
+                    db_update_wheel_position(
+                        wheel, new_pos, db, DB_PMK_NAME, CLN_WHEELS, session
+                    )
                 )
-            completed_order = await db_create_order(
-                order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session,
-            )
             lab_wheel_data = await db_find_wheel_by_object_id(
                 chosen_wheel_id, db, DB_PMK_NAME, CLN_WHEELS, session
             )
             lab_wheel_data['wheelStack'] = None
             lab_wheel_data['status'] = PS_LABORATORY
-            await db_update_wheel(
-                chosen_wheel_id, lab_wheel_data, db, DB_PMK_NAME, CLN_WHEELS, session
+            transaction_tasks.append(
+                db_update_wheel(
+                    chosen_wheel_id, lab_wheel_data, db, DB_PMK_NAME, CLN_WHEELS, session
+                )
             )
+            transaction_tasks.append(
+                db_create_order(
+                    order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session,
+                )
+            )
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
+            completed_order = transaction_tasks_results[-1]
             return completed_order.inserted_id
 
 

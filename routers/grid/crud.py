@@ -657,6 +657,32 @@ async def db_get_grid_last_change_time(
         )
 
 
+async def db_grid_update_last_change_time(
+        grid_id: ObjectId,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': grid_id
+    }
+    update = {
+        '$set': {
+            'lastChange': await time_w_timezone()
+        }
+    }
+    try:
+        result = await collection.update_one(query, update)
+        return result
+    except PyMongoError as error:
+        logger.error(f'Error while searching in {db_collection}: {error}')
+        raise HTTPException(
+            detail=f'Error while getting `lastChange` time',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
 async def db_grid_get_custom_fields(
         grid_id: ObjectId,
         custom_fields: list[str],
