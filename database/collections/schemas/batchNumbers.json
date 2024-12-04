@@ -51,8 +51,8 @@
             "description": "Timestamp of time when wheel was tested"
           },
           "confirmedBy": {
-            "bsonType": "objectId",
-            "description": "ObjectId of a user, confirmed result of the test"
+            "bsonType": "str",
+            "description": "`username` of a user, confirmed result of the test"
           }
         }
       }
