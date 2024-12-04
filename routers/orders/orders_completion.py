@@ -565,6 +565,7 @@ async def orders_complete_move_to_laboratory(order_data: dict, db: AsyncIOMotorC
             target_batch_number = lab_wheel_data['batchNumber']
             test_wheel_record: dict[str, ObjectId | str | None] = {
                 '_id': lab_wheel_data['_id'],
+                'wheelId': lab_wheel_data['wheelId'],
                 'arrivalDate': completion_time,
                 'result': None,
                 'testDate': None,
@@ -1029,6 +1030,7 @@ async def orders_complete_move_from_storage_to_lab(
             target_batch_number = lab_wheel_data['batchNumber']
             test_wheel_record: dict[str, ObjectId | str | None] = {
                 '_id': lab_wheel_data['_id'],
+                'wheelId': lab_wheel_data['wheelId'],
                 'arrivalDate': completion_time,
                 'result': None,
                 'testDate': None,

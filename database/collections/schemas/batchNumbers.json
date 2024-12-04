@@ -38,6 +38,10 @@
             "bsonType": "objectId",
             "description": "ObjectId of the wheel"
           },
+          "wheelId": {
+            "bsonType": "string",
+            "description": "extra identifier `wheelId`"
+          },
           "arrivalDate": {
             "bsonType": "date",
             "description": "Timestamp of time, when wheel is delivered to the lab"
