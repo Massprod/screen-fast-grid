@@ -2,6 +2,7 @@ import asyncio
 from loguru import logger
 from bson import ObjectId
 from fastapi import HTTPException, status
+from routers.batch_numbers.crud import db_insert_test_wheel
 from utility.utilities import time_w_timezone, get_object_id
 from routers.orders.crud import db_delete_order, db_create_order
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
@@ -29,6 +30,7 @@ from routers.wheelstacks.crud import (
     db_update_wheelstack
 )
 from constants import (
+    CLN_BATCH_NUMBERS,
     PRES_TYPE_GRID,
     PRES_TYPE_PLATFORM,
     DB_PMK_NAME,
@@ -568,7 +570,12 @@ async def orders_complete_move_to_laboratory(order_data: dict, db: AsyncIOMotorC
                 'testDate': None,
                 'confirmedBy': '',
             }
-
+            transaction_tasks.append(
+                db_insert_test_wheel(
+                    target_batch_number, test_wheel_record,
+                    db, DB_PMK_NAME, CLN_BATCH_NUMBERS, session
+                )
+            )
             # endregion labRebuild
             order_data['status'] = ORDER_STATUS_COMPLETED
             order_data['lastUpdated'] = completion_time
@@ -1018,6 +1025,22 @@ async def orders_complete_move_from_storage_to_lab(
                     chosen_wheel_id, lab_wheel_data, db, DB_PMK_NAME, CLN_WHEELS, session
                 )
             )
+            # region labRebuild
+            target_batch_number = lab_wheel_data['batchNumber']
+            test_wheel_record: dict[str, ObjectId | str | None] = {
+                '_id': lab_wheel_data['_id'],
+                'arrivalDate': completion_time,
+                'result': None,
+                'testDate': None,
+                'confirmedBy': '',
+            }
+            transaction_tasks.append(
+                db_insert_test_wheel(
+                    target_batch_number, test_wheel_record,
+                    db, DB_PMK_NAME, CLN_BATCH_NUMBERS, session
+                )
+            )
+            # endregion labRebuild
             transaction_tasks.append(
                 db_create_order(
                     order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session,

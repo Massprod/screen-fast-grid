@@ -259,3 +259,45 @@ async def db_find_batch_numbers_many(
             detail='Error while seaching `batchNumber` records',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+# region labRebuild
+async def db_insert_test_wheel(
+        batch_number: str,
+        test_wheel_data,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+        session: AsyncIOMotorClient = None,
+):
+    collection = await get_db_collection(db, db_name, db_collection)
+    db_log_data = await log_db_record(db_name, db_collection)
+    query = {
+        'batchNumber': batch_number
+    }
+    wheel_id = test_wheel_data['_id']
+    update = {
+        '$push': {
+            'wheels': test_wheel_data
+        }
+    }
+    logger.info(
+        f'Updating `wheels` data for `batchNumber` => {batch_number}' + db_log_data
+    )
+    try:
+        result = await collection.update_one(query, update, session=session)
+        logger.info(
+            f'Successfully updated `wheels` data for `batchNumber` => {batch_number}'
+        )
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        error_str: str = f'Error while updating `batchNumber` => {batch_number}'
+        logger.error(
+            error_str + db_log_data + error_extra
+        )
+        raise HTTPException(
+            detail=error_str,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+# endregion labRebuild
