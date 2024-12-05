@@ -66,6 +66,6 @@
       { "keys": { "createdAt": -1 }, "options": { "name": "createdAt_desc_index" } },
       { "keys": { "batchNumber": 1 }, "options": {"unique": true, "name": "indexing by `batchId`" } },
       { "keys": { "batchNumber": 1,  "laboratoryPassed": 1, "laboratoryTestDate": 1 }, "options": { "name": "indexing by all"} },
-      { "keys": { "wheels._id": 1, "wheels.result": 1, "wheels.confirmedBy": 1, "wheels.testDate":  1 } }
+      { "keys": { "wheels._id": 1, "wheels.result": 1, "wheels.confirmedBy": 1, "wheels.testDate":  1, "wheels.wheelId": 1} }
     ]
 }
