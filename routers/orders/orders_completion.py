@@ -136,24 +136,31 @@ async def orders_complete_move_wholestack(order_data: dict, db: AsyncIOMotorClie
     source_cell_data['wheelStack'] = None
     async with (await db.start_session()) as session:
         async with session.start_transaction():
+            transaction_tasks = []
             if PRES_TYPE_GRID == source_type:
                 record_change = False if dest_id == source_id else True
-                await db_update_grid_cell_data(
-                    source_id, source_row, source_col, source_cell_data,
-                    db, DB_PMK_NAME, CLN_GRID, session, record_change
+                transaction_tasks.append(
+                    db_update_grid_cell_data(
+                        source_id, source_row, source_col, source_cell_data,
+                        db, DB_PMK_NAME, CLN_GRID, session, record_change
+                    )
                 )
             elif PRES_TYPE_PLATFORM == source_type:
-                await db_update_platform_cell_data(
-                    source_id, source_row, source_col, source_cell_data,
-                    db, DB_PMK_NAME, CLN_BASE_PLATFORM, session, True
+                transaction_tasks.append(
+                    db_update_platform_cell_data(
+                        source_id, source_row, source_col, source_cell_data,
+                        db, DB_PMK_NAME, CLN_BASE_PLATFORM, session, True
+                    )
                 )
             # -5- <- Transfer `wheelStack` on destination cell
             destination_cell_data['blocked'] = False
             destination_cell_data['blockedBy'] = None
             destination_cell_data['wheelStack'] = source_wheelstack_data['_id']
-            await db_update_grid_cell_data(
-                dest_id, dest_row, dest_col, destination_cell_data,
-                db, DB_PMK_NAME, CLN_GRID, session, True
+            transaction_tasks.append(
+                db_update_grid_cell_data(
+                    dest_id, dest_row, dest_col, destination_cell_data,
+                    db, DB_PMK_NAME, CLN_GRID, session, True
+                )
             )
             # -6- <- Unblock `wheelStack`
             source_wheelstack_data['placement']['type'] = dest_type
@@ -164,27 +171,37 @@ async def orders_complete_move_wholestack(order_data: dict, db: AsyncIOMotorClie
             source_wheelstack_data['blocked'] = False
             # `moveWholeStack` only for `grid` -> `grid` or `basePlatform` -> `grid`.
             source_wheelstack_data['status'] = PS_GRID
-            await db_update_wheelstack(
-                source_wheelstack_data, source_wheelstack_data['_id'],
-                db, DB_PMK_NAME, CLN_WHEELSTACKS, session, True
+            transaction_tasks.append(
+                db_update_wheelstack(
+                    source_wheelstack_data, source_wheelstack_data['_id'],
+                    db, DB_PMK_NAME, CLN_WHEELSTACKS, session, True
+                )
             )
             # -7- Update status of every affected wheel
             for wheel in order_data['affectedWheels']['source']:
-                await db_update_wheel_status(
-                    wheel, PS_GRID, db, DB_PMK_NAME, CLN_WHEELS, session
+                transaction_tasks.append(
+                    db_update_wheel_status(
+                        wheel, PS_GRID, db, DB_PMK_NAME, CLN_WHEELS, session
+                    )
                 )
             # -8- Delete order from `activeOrders`
-            await db_delete_order(
-                order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+            transaction_tasks.append(
+                db_delete_order(
+                    order_data['_id'], db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session
+                )
             )
             # -9- Add order into `completedOrders`
             completion_time = await time_w_timezone()
             order_data['status'] = ORDER_STATUS_COMPLETED
             order_data['lastUpdated'] = completion_time
             order_data['completedAt'] = completion_time
-            completed_order = await db_create_order(
-                order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+            transaction_tasks.append(
+                db_create_order(
+                    order_data, db, DB_PMK_NAME, CLN_COMPLETED_ORDERS, session
+                )
             )
+            transaction_tasks_results = await asyncio.gather(*transaction_tasks)
+            completed_order = transaction_tasks_results[-1] 
             return completed_order.inserted_id
 
 
@@ -1355,6 +1372,7 @@ async def orders_complete_merge_wheelstacks(
             # + Affected wheels update +
             for wheel_pos, wheel_object_id in enumerate(new_merged_wheels):
                 new_wheel_data = {
+                    'status': destination_wheelstack_data['status'],
                     'wheelStack': {
                         'wheelStackId': destination_wheelstack_id,
                         'wheelStackPosition': wheel_pos
