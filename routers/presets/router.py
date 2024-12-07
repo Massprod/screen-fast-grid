@@ -20,6 +20,7 @@ from constants import (
     DB_PMK_NAME,
     CLN_PRESETS,
     BASIC_PAGE_VIEW_ROLES,
+    EE_LABORATORY
 )
 
 
@@ -169,6 +170,13 @@ async def route_post_create_preset(
             'orders': {},
             'blocked': False,
         }
+    # Placements is a messs, and we won't be able to utilize them correctyl without lab at every1.
+    extra_data['laboratory'] = {
+        'type': EE_LABORATORY,
+        'id': 'fLab',
+        'orders': {},
+        'blocked': False,
+    }
     # Convert records
     def convert_grid_object(value: GridObject):
         return value.get_dict()
