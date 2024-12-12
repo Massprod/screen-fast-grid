@@ -59,6 +59,12 @@ PLACEMENT_COLLECTIONS: dict[str, str] = {
 PRES_TYPE_GRID: str = 'grid'
 PRES_TYPE_PLATFORM: str = 'basePlatform'
 
+# preset cell types
+PRESET_WHEELSTACK = 'wheelStack'
+PRESET_WHITESPACE = 'whitespace'
+PRESET_IDENTIFIER = 'identifier'
+PRESET_IDENTIFIER_STRING = 'identifierString'
+
 # EXTRA ELEMENT TYPES
 EE_GRID_ROW_NAME: str = 'extra'
 EE_HAND_CRANE: str = 'handCrane'
@@ -141,7 +147,7 @@ CELERY_ACTION_ROLES: set[str] = {
     CELERY_WORKER_ROLE
 }
 
-# WS CODES translate
+# region WS
 WS_CODES: dict[int, int] = {
     status.HTTP_400_BAD_REQUEST: status.WS_1003_UNSUPPORTED_DATA,  # Bad Request -> Unsupported Data
     status.HTTP_401_UNAUTHORIZED: status.WS_1008_POLICY_VIOLATION,  # Unauthorized -> Policy Violation
@@ -150,9 +156,93 @@ WS_CODES: dict[int, int] = {
     status.HTTP_409_CONFLICT: status.WS_1008_POLICY_VIOLATION,  # Conflict -> Policy Violation
     status.HTTP_500_INTERNAL_SERVER_ERROR: status.WS_1011_INTERNAL_ERROR,  # Internal Server Error -> Internal Error
 }
+# region REDIS
+PARTIAL_UPDATE_CHANNEL: str = getenv('PARTIAL_UPDATE_CHANNEL', 'partialUpdate')
+# endregion REDIS
+# endregion WS
 
-# preset cell types
-PRESET_WHEELSTACK = 'wheelStack'
-PRESET_WHITESPACE = 'whitespace'
-PRESET_IDENTIFIER = 'identifier'
-PRESET_IDENTIFIER_STRING = 'identifierString'
+# region tableFilters
+WHEELS_STATUS_MAP: dict[str, str] = {}
+
+LAB_RU_WORDS: list[str] = [
+    'лаборатория',        # laboratory
+    'лаба',               # informal abbreviation
+    'лабораторка',        # informal/diminutive form
+    'исследование',       # research (contextual match)
+    'тестирование',       # testing (contextual match)
+    'анализ',             # analysis (contextual match)
+    'эксперимент',        # experiment (contextual match)
+    'научная лаборатория',# scientific laboratory
+    'научная база',       
+    'испытания',
+]
+WHEELS_STATUS_MAP.update({
+    ru_word: WH_LABORATORY for ru_word in LAB_RU_WORDS
+})
+
+SHIPPED_RU_WORDS: list[str] = [
+    'отгружено',        # shipped
+    'доставлено',       # delivered
+    'выгружено',        # unloaded
+    'отправлено',       # sent/dispatched
+    'ушло',             # informal, "gone"
+    'на пути',          # "on the way" (contextual match)
+    'в пути',           # "in transit"
+    'транспортировка',  # transportation
+    'перевозка',        # shipment/transport
+    'грузоперевозка'    # freight transportation
+]
+WHEELS_STATUS_MAP.update({
+    ru_word: WH_SHIPPED for ru_word in SHIPPED_RU_WORDS
+})
+
+GRID_RU_WORDS: list[str] = [
+    'приямок',
+    'яма',
+]
+WHEELS_STATUS_MAP.update({
+    ru_word: WH_GRID for ru_word in GRID_RU_WORDS
+})
+
+PLATFORM_RU_WORDS: list[str] = [
+    'платформа',
+    'челнок',
+    'базовая',
+    'базовое_расположение',
+    'поступление',
+]
+WHEELS_STATUS_MAP.update({
+    ru_word: WH_PLATFORM for ru_word in PLATFORM_RU_WORDS
+})
+
+REJ_RU_WORDS: list[str] = [
+    'несоответствующая',
+    'брак',
+    'плохо',
+    'недостаточно',
+]
+WHEELS_STATUS_MAP.update({
+    ru_word: WH_REJECTED for ru_word in REJ_RU_WORDS
+})
+
+STORAGE_RU_WORDS: list[str] = [
+    'хранилище',
+    'склад',
+    'помещение',
+    'сейф',
+]
+WHEELS_STATUS_MAP.update({
+    ru_word: WH_STORAGE for ru_word in STORAGE_RU_WORDS
+})
+
+UNPLACED_RU_WORDS: list[str] = [
+    'пустота',
+    'нигде',
+    'единичные',
+    'внестопы',
+    'один',
+]
+WHEELS_STATUS_MAP.update({
+    ru_word: WH_UNPLACED for ru_word in UNPLACED_RU_WORDS
+})
+# endRegion tableFilters
