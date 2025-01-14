@@ -699,6 +699,7 @@ async def orders_create_move_to_processing(db: AsyncIOMotorClient, order_data: d
     # +++ Order creation
     creation_time = await time_w_timezone()
     order_data['source']['placementId'] = source_id
+    virtual_position = order_data.get('virtualPosition', 0)
     cor_data = {
         'orderName': order_data['orderName'],
         'orderDescription': order_data['orderDescription'],
@@ -721,6 +722,7 @@ async def orders_create_move_to_processing(db: AsyncIOMotorClient, order_data: d
         },
         'status': ORDER_STATUS_PENDING,
         'orderType': ORDER_MOVE_TO_PROCESSING,
+        'virtualPosition': virtual_position,
     }
     async with (await db.start_session()) as session:
         async with session.start_transaction():
@@ -762,6 +764,7 @@ async def process_wheelstack(
     cur_wheelstack_col = wheelstack_data['colPlacement']
     cur_wheelstack_placement_id = wheelstack_data['placement']['placementId']
     cur_wheelstack_placement_type = wheelstack_data['placement']['type']
+    virtual_position = order_req_data.get('virtualPosition', 0)
     creation_time = await time_w_timezone()
     order_data = {
         'orderName': order_req_data['orderName'],
@@ -790,6 +793,7 @@ async def process_wheelstack(
         },
         'status': ORDER_STATUS_PENDING,
         'orderType': order_req_data['orderType'],
+        'virtualPosition': virtual_position,
     }
 
     created_order = await db_create_order(order_data, db, DB_PMK_NAME, CLN_ACTIVE_ORDERS, session)
@@ -1004,6 +1008,7 @@ async def orders_create_move_to_rejected(db: AsyncIOMotorClient, order_data: dic
     # +++ Order creation
     creation_time = await time_w_timezone()
     order_data['source']['placementId'] = source_id
+    virtual_position = order_data.get('virtualPosition', 0)
     cor_data = {
         'orderName': order_data['orderName'],
         'orderDescription': order_data['orderDescription'],
@@ -1026,6 +1031,7 @@ async def orders_create_move_to_rejected(db: AsyncIOMotorClient, order_data: dic
         },
         'status': ORDER_STATUS_PENDING,
         'orderType': ORDER_MOVE_TO_REJECTED,
+        'virtualPosition': virtual_position,
     }
     async with (await db.start_session()) as session:
         async with session.start_transaction():

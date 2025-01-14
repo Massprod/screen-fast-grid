@@ -331,3 +331,38 @@ async def db_find_wheels_free_fields(
             detail=f'Error while gathering `wheel`s documents',
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+async def db_set_wheel_virtual_position(
+        wheel_id: ObjectId,
+        virtual_position: int,
+        db: AsyncIOMotorClient,
+        db_name: str,
+        db_collection: str,
+        session: AsyncIOMotorClientSession = None,
+):
+    db_info = await log_db_record(db_name, db_collection)
+    logger.info(
+        f'Updating `virtualPosition` for a `wheel` = {wheel_id}'
+    )
+    collection = await get_db_collection(db, db_name, db_collection)
+    query = {
+        '_id': wheel_id
+    }
+    update = {
+        '$set': {
+            'sqlData.virtualPosition': virtual_position,
+        }
+    }
+    try:
+        result = await collection.update_one(query, update, session=session)
+        return result
+    except PyMongoError as error:
+        error_extra: str = await log_db_error_record(error)
+        logger.error(
+            f'Error while updating `virtualPosition` for a `wheel` = {wheel_id}' + db_info + error_extra
+        )
+        raise HTTPException(
+            detail=f'Error while updating `virtualPosition`',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

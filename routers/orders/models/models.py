@@ -141,7 +141,9 @@ class CreateProcessingOrderRequest(BaseModel):
     source: ProcessingSource = Field(...,
                                      description='data to identify and validate `source` as correct one')
     destination: ProcessingDestination = Field(...,
-                                               description='data to identify and validate `destination` as correct one')
+                                               description='data to identify and validate `destination` as correct one'),
+    virtualPosition: int = Field(0,
+                                 description='`virtualPosition` to identify `wheel` placement')
 
 
 class OutOrderTypes(str, Enum):
@@ -168,7 +170,9 @@ class CreateBulkProcessingOrderRequest(BaseModel):
     placementType: BulkPlacements = Field(...,
                                           description='`placementType` to gather `wheelstack`s')
     destination: ProcessingDestination = Field(...,
-                                               description='data to identify and validate `destination` as correct one')
+                                               description='data to identify and validate `destination` as correct one'),
+    virtualPosition: int = Field(0,
+                                 description='`virtualPosition` to place wheels')
 
 
 class MoveToStorageSources(str, Enum):

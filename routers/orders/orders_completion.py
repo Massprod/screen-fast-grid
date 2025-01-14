@@ -17,7 +17,8 @@ from routers.wheels.crud import (
     db_update_wheel_status,
     db_update_wheel_position,
     db_find_wheel_by_object_id,
-    db_update_wheel
+    db_update_wheel,
+    db_set_wheel_virtual_position
 )
 from routers.grid.crud import (
     db_get_grid_cell_data,
@@ -270,6 +271,7 @@ async def orders_complete_move_to_processing(order_data: dict, db: AsyncIOMotorC
     source_cell_data['wheelStack'] = None
     source_cell_data['blockedBy'] = None
     source_cell_data['blocked'] = False
+    virtual_position = order_data.get('virtualPosition', 0)
     async with (await db.start_session()) as session:
         async with session.start_transaction():
             transaction_tasks = []
@@ -304,6 +306,11 @@ async def orders_complete_move_to_processing(order_data: dict, db: AsyncIOMotorC
                 transaction_tasks.append(
                     db_update_wheel_status(
                         wheel, PS_SHIPPED, db, DB_PMK_NAME, CLN_WHEELS, session
+                    )
+                )
+                transaction_tasks.append(
+                    db_set_wheel_virtual_position(
+                        wheel, virtual_position, db, DB_PMK_NAME, CLN_WHEELS, session
                     )
                 )
             # -7- Delete order from `activeOrders`
@@ -392,6 +399,7 @@ async def orders_complete_move_to_rejected(order_data: dict, db: AsyncIOMotorCli
     source_cell_data['wheelStack'] = None
     source_cell_data['blockedBy'] = None
     source_cell_data['blocked'] = False
+    virtual_position = order_data.get('virtualPosition', 0)
     async with (await db.start_session()) as session:
         async with session.start_transaction():
             transaction_tasks = []
@@ -424,6 +432,11 @@ async def orders_complete_move_to_rejected(order_data: dict, db: AsyncIOMotorCli
                 transaction_tasks.append(
                     db_update_wheel_status(
                         wheel, PS_REJECTED, db, DB_PMK_NAME, CLN_WHEELS, session
+                    )
+                )
+                transaction_tasks.append(
+                    db_set_wheel_virtual_position(
+                        wheel, virtual_position, db, DB_PMK_NAME, CLN_WHEELS, session
                     )
                 )
             # -7- Delete order from `activeOrders`
@@ -861,6 +874,7 @@ async def orders_complete_move_to_pro_rej_from_storage(
             status_code=status.HTTP_404_NOT_FOUND,
         )
     elements_status = PS_SHIPPED if processing else PS_REJECTED
+    virtual_position = order_data.get('virtualPosition', 0)
     async with (await db.start_session()) as session:
         async with session.start_transaction():
             # Delete wheelstack from storage
@@ -890,6 +904,11 @@ async def orders_complete_move_to_pro_rej_from_storage(
                 transaction_tasks.append(
                     db_update_wheel_status(
                         wheel, elements_status, db, DB_PMK_NAME, CLN_WHEELS, session,
+                    )
+                )
+                transaction_tasks.append(
+                    db_set_wheel_virtual_position(
+                        wheel, virtual_position, db, DB_PMK_NAME, CLN_WHEELS, session
                     )
                 )
             # Delete active order

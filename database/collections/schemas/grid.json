@@ -93,6 +93,14 @@
           "id": {
             "bsonType": "string",
             "description": "`id` of the extra element"
+          },
+          "virtualPositions": {
+            "bsonType": "array",
+            "description": "`virtualPosition`s which can be used as place identifiers",
+            "items": {
+              "bsonType": "int",
+              "description": "number of virtual position"
+            }
           }
         }
       }

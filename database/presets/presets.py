@@ -63,7 +63,9 @@ async def create_pmk_grid_preset() -> dict:
             'id': f'crane_vic{_}',
             'orders': {},
             'blocked': False,
+            'virtualPositions': [],
         }
+    preset['extra']['vic1']['virtualPositions'] = [1, 2, 3, 4]
     preset['extra']['laboratory'] = {
         'type': 'laboratory',
         'id': 'laboratory',
