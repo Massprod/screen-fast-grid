@@ -470,6 +470,7 @@ async def orders_cancel_move_from_storage_to_extras(
     source_wheelstack_data = await db_find_wheelstack_by_object_id(
         order_data['affectedWheelStacks']['source'], db, DB_PMK_NAME, CLN_WHEELSTACKS,
     )
+    source_id = order_data['source']['placementId']
     if source_wheelstack_data is None:
         raise HTTPException(
             detail='wheelstack doesnt exist',
@@ -488,6 +489,12 @@ async def orders_cancel_move_from_storage_to_extras(
             transaction_tasks.append(
                 db_update_wheelstack(
                     source_wheelstack_data, source_wheelstack_data['_id'], db, DB_PMK_NAME, CLN_WHEELSTACKS, session, True
+                )
+            )
+            source_identifiers: list[dict] = [{'_id': source_id}]
+            transaction_tasks.append(
+                db_update_storage_last_change(
+                    source_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
                 )
             )
             transaction_tasks.append(
@@ -520,6 +527,7 @@ async def orders_cancel_move_from_storage_to_storage(
         )
     source_wheelstack_data['blocked'] = False
     source_wheelstack_data['lastOrder'] = order_data['_id']
+    source_id = order_data['source']['placementId']
     async with (await db.start_session()) as session:
         async with session.start_transaction():
             transaction_tasks = []
@@ -532,6 +540,12 @@ async def orders_cancel_move_from_storage_to_storage(
                 db_update_wheelstack(
                     source_wheelstack_data, source_wheelstack_data['_id'],
                     db, DB_PMK_NAME, CLN_WHEELSTACKS, session
+                )
+            )
+            source_identifiers: list[dict] = [{'_id': source_id}]
+            transaction_tasks.append(
+                db_update_storage_last_change(
+                    source_identifiers, db, DB_PMK_NAME, CLN_STORAGES, session
                 )
             )
             transaction_tasks.append(
